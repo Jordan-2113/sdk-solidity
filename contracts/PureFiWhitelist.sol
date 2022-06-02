@@ -8,6 +8,7 @@ contract PureFiWhitelist is PausableUpgradeable, OwnableUpgradeable{
     
     PureFiRouter private router;
     mapping (address=>Verification) registry;
+    mapping (address=>uint32) registrationAttempts;
 
     event AddressWhitelisted(address indexed user, uint256 indexed ruleID);
     event AddressDelisted(address indexed user);
@@ -22,7 +23,7 @@ contract PureFiWhitelist is PausableUpgradeable, OwnableUpgradeable{
 
     function version() public pure returns(uint32){
         // 000.000.000 - Major.minor.internal
-        return 1000001;
+        return 1001001;
     }
 
     function initialize(address _router) public initializer{
