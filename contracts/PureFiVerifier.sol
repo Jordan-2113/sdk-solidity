@@ -43,7 +43,10 @@ Initiates raw transaction (to Uniswap).
   constructor(address _issuerRegistry){
     issuerRegistry = _issuerRegistry;
   }
-
+  /**
+  Changelog:
+  version 1000001:
+   */
   function version() public pure returns(uint32){
     // 000.000.000 - Major.minor.internal
     return 1000001;
@@ -81,8 +84,7 @@ Initiates raw transaction (to Uniswap).
     bytes memory signature
   ) public payable whenNotPaused {
     uint256 initialgas = gasleft();
-    //TODO: check for business param: payments/tokens/whatever
-    //from: target || msg.sender
+    
     _verifyData(target,data,signature);
     //perform transaction
     (bool success, bytes memory returndata) = target.call{value: msg.value}(rawtx);
@@ -119,8 +121,6 @@ Initiates raw transaction (to Uniswap).
     bytes memory signature
   ) public payable whenNotPaused {
     uint256 initialgas = gasleft();
-    //TODO: check for business param: payments/tokens/whatever
-    //from: target || msg.sender
     _verifyData(target,data,signature);
      //perform transaction
     (bool success, bytes memory returndata) = target.call{value: msg.value}(abi.encodePacked(rawtx, address(uint160(data[3]))));

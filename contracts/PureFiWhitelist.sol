@@ -20,7 +20,11 @@ contract PureFiWhitelist is PausableUpgradeable, OwnableUpgradeable{
         uint64 validUntil;
         address issuer;
     }
-
+    /**
+    Changelog: 
+    version 1.001.002:
+        - added delistMe()
+    */
     function version() public pure returns(uint32){
         // 000.000.000 - Major.minor.internal
         return 1001001;
@@ -54,6 +58,18 @@ contract PureFiWhitelist is PausableUpgradeable, OwnableUpgradeable{
         require (registry[_user].issuer == msg.sender,"Whitelist: only the same issuer can revoke the record");
         delete registry[_user];
         emit AddressDelisted(_user);
+    }
+
+    /**
+    * delistMe() allows any user to opt out from whitelist. 
+    * Useful for users that suddenly undrestood their PK is compromized 
+    * and want to deassosiate address from their identity 
+    */
+    function delistMe() external { 
+        if(registry[msg.sender].sessionID > 0){
+            delete registry[msg.sender];
+            emit AddressDelisted(msg.sender);
+        }
     }
 
     /**

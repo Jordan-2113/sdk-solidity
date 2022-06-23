@@ -13,6 +13,7 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
     using SafeERC20Upgradeable for IERC20Upgradeable;
 
     uint256 private constant P100 = 100; //100% denominator
+    uint256 private constant MONTH = 30*24*60*60; //30 days in seconds
  
     PureFiLockService private lockService;
     IERC20Upgradeable private ufiToken;
@@ -39,9 +40,16 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
     event Subscribed(address indexed subscriber, uint8 tier, uint64 dateSubscribed, uint256 UFILocked);
     event Unsubscribed(address indexed subscriber, uint8 tier, uint64 dateUnsubscribed, uint256 ufiBurned);
 
+    /**
+    Changelog:
+    1000001 -> 1000002
+    1. fixed issue with getUserData();
+    1000002 -> 1000003
+    1. changed subscription time calculation to round up to nearest month. I.e. minimum subscription time = 1 month;
+    */
     function version() public pure returns(uint32){
         // 000.000.000 - Major.minor.internal
-        return 1000001;
+        return 1000003;
     }
 
     function initialize(address _admin, address _ufi, address _lock, address _tokenBuyer, address _burnAddress) public initializer{
@@ -81,6 +89,8 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
         if(userSubscriptionTier > 0){
             (uint256 lockedBalance,) = lockService.getLockData(msg.sender);
             uint256 timeSubscribed = block.timestamp - userSubscriptions[msg.sender].dateSubscribed;
+            // round timeSubscribed up to month
+            timeSubscribed = (1 + timeSubscribed / MONTH) * MONTH;
             // for expired subscriptions set subscribed time to initial tier duration.
             if (timeSubscribed > tiers[userSubscriptionTier].subscriptionDuration)
                 timeSubscribed = tiers[userSubscriptionTier].subscriptionDuration;
@@ -121,6 +131,8 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
         require(userSubscriptionTier > 0, "No subscription found");
         (uint256 lockedBalance,) = lockService.getLockData(msg.sender);
         uint256 timeSubscribed = block.timestamp - userSubscriptions[msg.sender].dateSubscribed;
+        // round timeSubscribed up to month
+        timeSubscribed = (1 + timeSubscribed / MONTH) * MONTH;
         // for expired subscriptions set subscribed time to initial tier duration.
         if (timeSubscribed > tiers[userSubscriptionTier].subscriptionDuration)
             timeSubscribed = tiers[userSubscriptionTier].subscriptionDuration;
@@ -150,6 +162,8 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
         if(userSubscriptionTier > 0){
             (uint256 lockedBalance,) = lockService.getLockData(_holder);
             uint256 timeSubscribed = block.timestamp - userSubscriptions[msg.sender].dateSubscribed;
+            // round timeSubscribed up to month
+            timeSubscribed = (1 + timeSubscribed / MONTH) * MONTH;
             // for expired subscriptions set subscribed time to initial tier duration.
             if (timeSubscribed > tiers[userSubscriptionTier].subscriptionDuration)
                 timeSubscribed = tiers[userSubscriptionTier].subscriptionDuration;
@@ -177,10 +191,10 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
      */
     function getUserData(address _user) external view returns (uint8, uint64, uint64, uint184, uint256) {
         (uint256 lockedBalance,uint64 lockedUntil) = lockService.getLockData(_user);
-        return (userSubscriptions[msg.sender].tier,
-                userSubscriptions[msg.sender].dateSubscribed,
+        return (userSubscriptions[_user].tier,
+                userSubscriptions[_user].dateSubscribed,
                 lockedUntil,
-                userSubscriptions[msg.sender].userdata,
+                userSubscriptions[_user].userdata,
                 lockedBalance);
         
     }
