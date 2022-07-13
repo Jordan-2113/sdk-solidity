@@ -37,7 +37,7 @@ contract FilteredPool is ERC20Upgradeable{
     * @param _to - address to assign liquidity tokens to
     * @param data - signed data package from the off-chain verifier
     *    data[0] - verification session ID
-    *    data[1] - circuit ID (if required)
+    *    data[1] - rule ID (if required)
     *    data[2] - verification timestamp
     *    data[3] - verified wallet - to be the same as msg.sender
     * @param signature - Off-chain verifier signature
@@ -54,11 +54,11 @@ contract FilteredPool is ERC20Upgradeable{
         // Ethereum: 10 min
         // BSC: 3 min
         require(data[2] + 600 >= block.timestamp, "Verifier: verification data expired");
-        // AML Risk Score circuits:
+        // AML Risk Score rule checks:
         // 431001...431099: 
         // [431] stands for AML Risk Score Check, 
         // [001..099] - risk score threshold. I.e. validation passed when risk score <= [xxx]; 
-        require(data[1] == 431040, "Verifier: circuit data invalid");
+        require(data[1] == 431040, "Verifier: rule verification failed");
         _deposit(_amount, _to);
        
     }
