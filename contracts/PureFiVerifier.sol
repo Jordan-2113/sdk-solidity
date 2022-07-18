@@ -1,141 +1,56 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.0;
 
-import "../openzeppelin-contracts-master/contracts/security/Pausable.sol";
+import "../openzeppelin-contracts-upgradeable-master/contracts/security/PausableUpgradeable.sol";
+import "../openzeppelin-contracts-upgradeable-master/contracts/access/OwnableUpgradeable.sol";
 import "../openzeppelin-contracts-master/contracts/access/Ownable.sol";
 import "./libraries/SignLib.sol";
-import "./PureFiIssuerRegistry.sol";
+import "./PureFiRouter.sol";
+import "./utils/ParamStorage.sol";
 
 
-contract PureFiVerifier is Pausable, Ownable, SignLib{
+contract PureFiVerifier is PausableUpgradeable, OwnableUpgradeable, ParamStorage, SignLib{
 
-  /**
-  Web app forms a transaction in the address of Intermediary contract. 
-Params:
-Raw destination transaction, encoded (i.e. Uniswap exchange)
-PureFi issuer Session ID
-Circuit ID
-Deadline
-User wallet address
-Signature. 
-Transaction is signed by the wallet and sent to the Intermediary contract.
-When Intermediary contract is invoked, 
-Validates PureFi issuer signature. Should match to the Valid signature from registry
-Validates UserWallet from signed package == user who signed transaction
-Validates Deadline is not reached 
-Validates Circuit ID matches pre-configured (if any)
-Initiates raw transaction (to Uniswap). 
+  uint16 public constant ERROR_ISSUER_SIGNATURE_INVALID = 1;
+  uint16 public constant ERROR_FUNDS_SENDER_DOESNT_MATCH_ADDRESS_VERIFIED = 2;
+  uint16 public constant ERROR_PROOF_VALIDITY_EXPIRED = 3;
+  uint16 public constant ERROR_RULE_DOESNT_MATCH = 4;
 
+  uint16 private constant PARAM_DEFAULT_AML_GRACETIME = 3;
+  uint16 private constant PARAM_DEFAULT_AML_RULE = 4;
 
-   */
-  
-  address public issuerRegistry;
-
+  PureFiRouter public router;
   mapping (address => TagetConfiguration) configurations;
 
   struct TagetConfiguration{
     uint64 graceTime;//verification grace time in seconds
-    uint256 circuit; //required circuit id for verification
+    uint256 ruleID; //required ruleid for verification
   }
   // event Verified(address indexed )
   event TargetVerificationConfigured(address indexed target, uint64 graceTime, uint256 circuit);
 
-  constructor(address _issuerRegistry){
-    issuerRegistry = _issuerRegistry;
+  function initialize(address _router) public initializer{
+    __Ownable_init();
+    __Pausable_init_unchained();
+    router = PureFiRouter(_router);
   }
-  /**
+
+    /**
   Changelog:
-  version 1000001:
+  version 1001001:
    */
   function version() public pure returns(uint32){
     // 000.000.000 - Major.minor.internal
-    return 1000001;
-  }
-
-  function pause() onlyOwner external {
-    super._pause();
-  }
-
-  function unpause() onlyOwner external {
-    super._unpause();
-  }
-
-  function configureTarget(address _target, uint64 _graceTime, uint256 _circuit) public onlyOwner{
-    configurations[_target] = TagetConfiguration(_graceTime, _circuit);
-    emit TargetVerificationConfigured(_target, _graceTime, _circuit);
+    return 1001001;
   }
 
   /**
-    Verifies signed data package and forwards raw transaction
-    Params:
-    @param rawtx - raw transaction data to be forwarded 
-    @param target - target address a raw transaction to be forwarded to
-    @param data - signed data package from the off-chain verifier
-      data[0] - verification session ID
-      data[1] - circuit ID (if required)
-      data[2] - verification timestamp
-      data[3] - verified wallet - to be the same as msg.sender
-    @param signature - Off-chain verifier signature
+  * preconfigure verification rules for the target (specified by msg.sender).
+  * Only contract can configure a rule for itself. No other options are available for pre-configuration
    */
-  function verifyAndForward(
-    bytes memory rawtx,
-    address target,
-    uint256[] memory data,
-    bytes memory signature
-  ) public payable whenNotPaused {
-    uint256 initialgas = gasleft();
-    
-    _verifyData(target,data,signature);
-    //perform transaction
-    (bool success, bytes memory returndata) = target.call{value: msg.value}(rawtx);
-    
-    require(success, "Verifier: nested transaction failed"); 
-    // Validate that the relayer has sent enough gas for the call.
-    // See https://ronan.eth.link/blog/ethereum-gas-dangers/
-    if (gasleft() <= initialgas / 63) {
-        // We explicitly trigger invalid opcode to consume all gas and bubble-up the effects, since
-        // neither revert or assert consume all gas since Solidity 0.8.0
-        // https://docs.soliditylang.org/en/v0.8.0/control-structures.html#panic-via-assert-and-error-via-require
-        assembly {
-            invalid()
-        }
-    }
-  }
-
-  /**
-    Verifies signed data package and forwards raw transaction
-    Params:
-    @param rawtx - raw transaction data to be forwarded 
-    @param target - target address a raw transaction to be forwarded to
-    @param data - signed data package from the off-chain verifier
-      data[0] - verification session ID
-      data[1] - circuit ID (if required)
-      data[2] - verification timestamp
-      data[3] - verified wallet - to be the same as msg.sender
-    @param signature - Off-chain verifier signature
-   */
-  function verifyAndForwardEIP712(
-    bytes memory rawtx,
-    address target,
-    uint256[] memory data,
-    bytes memory signature
-  ) public payable whenNotPaused {
-    uint256 initialgas = gasleft();
-    _verifyData(target,data,signature);
-     //perform transaction
-    (bool success, bytes memory returndata) = target.call{value: msg.value}(abi.encodePacked(rawtx, address(uint160(data[3]))));
-    
-    require(success, "Verifier: nested transaction failed"); 
-    // Validate that the relayer has sent enough gas for the call.
-    // See https://ronan.eth.link/blog/ethereum-gas-dangers/
-    if (gasleft() <= initialgas / 63) {
-        // We explicitly trigger invalid opcode to consume all gas and bubble-up the effects, since
-        // neither revert or assert consume all gas since Solidity 0.8.0
-        // https://docs.soliditylang.org/en/v0.8.0/control-structures.html#panic-via-assert-and-error-via-require
-        assembly {
-            invalid()
-        }
-    }
+  function configureTarget(uint64 _graceTime, uint256 _ruleID) external {
+    configurations[msg.sender] = TagetConfiguration(_graceTime, _ruleID);
+    emit TargetVerificationConfigured(msg.sender, _graceTime, _ruleID);
   }
 
   /**
@@ -150,7 +65,59 @@ Initiates raw transaction (to Uniswap).
    */
   function verifyIssuerSignature(uint256[] memory data, bytes memory signature) external view returns (bool){
       address recovered = recoverSigner(keccak256(abi.encodePacked(data[0], data[1], data[2], data[3])), signature);
-      return PureFiIssuerRegistry(issuerRegistry).isValidIssuer(recovered);
+      return router.isValidIssuer(recovered);
+  }
+
+  /**
+  performs default AML Verification agains funds sender
+  Params:
+  @param fundsSender - an address sending funds (can't be automatically determined here, so has to be provided by the caller)
+  @param data - signed data package from the off-chain verifier
+    data[0] - verification session ID
+    data[1] - circuit ID (if required)
+    data[2] - verification timestamp
+    data[3] - verified wallet - to be the same as msg.sender
+  @param signature - Off-chain issuer signature
+  */
+  function defaultAMLCheck(address fundsSender, uint256[] memory data, bytes memory signature) external view returns (uint16, string memory){
+    address recovered = recoverSigner(keccak256(abi.encodePacked(data[0], data[1], data[2], data[3])), signature);
+
+    if(!router.isValidIssuer(recovered)){
+      return _fail(ERROR_ISSUER_SIGNATURE_INVALID); //"Signature invalid"
+    }
+    if(fundsSender != address(uint160(data[3]))){
+      // "DefaultAMLCheck: tx sender doesn't match verified wallet"
+      return _fail(ERROR_FUNDS_SENDER_DOESNT_MATCH_ADDRESS_VERIFIED);
+    }
+    // grace time recommended:
+    // Ethereum: 10 min
+    // BSC: 3 min
+    if(data[2] + uintParams[PARAM_DEFAULT_AML_GRACETIME] < block.timestamp){
+      //"DefaultAMLCheck: verification data expired"
+      return _fail(ERROR_PROOF_VALIDITY_EXPIRED);
+    }
+    // AML Risk Score rule checks:
+    // 431001...431099: 
+    // [431] stands for AML Risk Score Check, 
+    // [001..099] - risk score threshold. I.e. validation passed when risk score <= [xxx]; 
+    if(data[1] != uintParams[PARAM_DEFAULT_AML_RULE]){
+      //"DefaultAMLCheck: rule verification failed"
+      return _fail(ERROR_RULE_DOESNT_MATCH);
+    }
+    return _succeed();
+  }
+
+  function getDefaultAMLRule() external view returns (uint256){
+    return uintParams[PARAM_DEFAULT_AML_RULE];
+  }
+
+  //************* PRIVATE FUNCTIONS ****************** */
+  function _fail(uint16 _errorCode) private view returns (uint16, string memory) {
+    return (_errorCode, stringParams[_errorCode]);
+  }
+
+  function _succeed() private pure returns (uint16, string memory) {
+    return (0, "DefaultAMLCheck succeeded");
   }
 
   function _verifyData(
@@ -159,11 +126,15 @@ Initiates raw transaction (to Uniswap).
     bytes memory signature)
     internal returns (bool){
       address recovered = recoverSigner(keccak256(abi.encodePacked(data[0], data[1], data[2], data[3])), signature);
-      require(PureFiIssuerRegistry(issuerRegistry).isValidIssuer(recovered),"Verifier: Invalid issuer signature");
+      require(router.isValidIssuer(recovered),"Verifier: Invalid issuer signature");
       require(address(uint160(data[3])) == msg.sender, "Verifier: tx sender doesn't match verified wallet");
       require(data[2] + configurations[target].graceTime >= block.timestamp, "Verifier: verification data expired");
-      require(data[1] == configurations[target].circuit,"Verifier: circuit data invalid");
+      require(data[1] == configurations[target].ruleID,"Verifier: circuit data invalid");
       return true;
     }
+
+  function _authorizeSetter(address _setter) internal override view returns (bool){
+    return owner() == _setter;
+  }
 
 }
