@@ -67,7 +67,7 @@ contract PureFiWhitelist is PausableUpgradeable, OwnableUpgradeable, SignLib{
     * @param signature - Issuer signature
     */
     function whitelistUserData(uint256[] memory data, bytes memory signature) external whenNotPaused {
-      address recoveredIssuer = recoverSigner(keccak256(abi.encodePacked(data[0], data[1], data[2], data[3], data[3])), signature);
+      address recoveredIssuer = recoverSigner(keccak256(abi.encodePacked(data[0], data[1], data[2], data[3], data[4])), signature);
       require (router.isValidIssuer(recoveredIssuer), "Whitelist: signer is not a registered Issuer");
       require (uint64(data[3]) < block.timestamp, "Whitelist: invalid validOn param");
       require (uint64(data[4]) >= block.timestamp, "Whitelist: invalid validUntil param");
