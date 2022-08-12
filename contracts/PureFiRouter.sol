@@ -7,6 +7,7 @@ import "./PureFiIssuerRegistry.sol";
 import "./PureFiWhitelist.sol";
 import "./utils/ParamStorage.sol";
 
+// @deprecated
 contract PureFiRouter is AccessControlUpgradeable, ParamStorage{
 
   uint16 private constant PARAM_ISSUER_REGISTRY_ADDRESS = 1;
@@ -81,7 +82,7 @@ contract PureFiRouter is AccessControlUpgradeable, ParamStorage{
   }
 
   function getDefaultAMLRule() external view returns (uint256){
-    return PureFiVerifier(addressParams[PARAM_VERIFIER_ADDRESS]).getDefaultAMLRule();
+    return PureFiVerifier(addressParams[PARAM_VERIFIER_ADDRESS]).getUint256(4);
   }
   
   /**
