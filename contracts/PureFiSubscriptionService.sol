@@ -3,8 +3,6 @@ pragma solidity >=0.8.0;
 import "../openzeppelin-contracts-upgradeable-master/contracts/access/AccessControlUpgradeable.sol";
 import "../openzeppelin-contracts-upgradeable-master/contracts/token/ERC20/IERC20Upgradeable.sol";
 import "../openzeppelin-contracts-upgradeable-master/contracts/token/ERC20/utils/SafeERC20Upgradeable.sol";
-import "./PureFiRouter.sol";
-import "./PureFiLockService.sol";
 import "./tokenbuyer/ITokenBuyer.sol";
 
 
@@ -15,26 +13,34 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
     uint256 private constant P100 = 100; //100% denominator
     uint256 private constant MONTH = 30*24*60*60; //30 days in seconds
  
-    PureFiLockService private lockService;
     IERC20Upgradeable private ufiToken;
     ITokenBuyer private tokenBuyer;
-    address public burnAddress;
+    address private profitCollectionAddress;
+
+    // uint256 collectedProfit; //amount of tokens collected as a profit from subsciptions selling
+
+    //0x - 04 bytes //number of users
+    //0x - 12 bytes //sigma dep_i
+    //0x - 16 bytes //sigma t_i*dep_i
+    uint256 private userstat; 
     
     mapping (uint8 => Tier) tiers;
     mapping (address => UserSubscription) userSubscriptions;
 
     struct Tier{
-        uint64 subscriptionDuration; //subscriptionDuration = token lockup time in seconds.
+        uint8 isactive; //1 - active, 0 - non acvite (can't subscribe)
+        uint48 subscriptionDuration; //subscriptionDuration = token lockup time in seconds.
         uint128 priceInUSD; // tier price in USD 
-        uint8 burnRatePercent; // burn rate in percents with 2 decimals (100% = 10000)
-        uint8 kycIncluded;
-        uint32 amlIncluded;
+        uint8 burnRatePercent; // burn rate in percents with 0 decimals (100% = P100)
+        uint16 kycIncluded;
+        uint48 amlIncluded;
     }
 
     struct UserSubscription{
         uint8 tier;
         uint64 dateSubscribed;
-        uint184 userdata; //storage reserve for future
+        uint128 tokensDeposited; //tokens tokensDeposited
+        uint48 userdata;//storage reserve for future 
     }
 
     event Subscribed(address indexed subscriber, uint8 tier, uint64 dateSubscribed, uint256 UFILocked);
@@ -49,78 +55,97 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
     */
     function version() public pure returns(uint32){
         // 000.000.000 - Major.minor.internal
-        return 1000003;
+        return 2000001;
     }
 
-    function initialize(address _admin, address _ufi, address _lock, address _tokenBuyer, address _burnAddress) public initializer{
+    function initialize(address _admin, address _ufi, address _tokenBuyer, address _profitCollectionAddress) public initializer{
         __AccessControl_init();
         _setupRole(DEFAULT_ADMIN_ROLE, _admin);
-        lockService = PureFiLockService(_lock);
+        // lockService = PureFiLockService(_lock);
         ufiToken = IERC20Upgradeable(_ufi);
         tokenBuyer = ITokenBuyer(_tokenBuyer);
-        burnAddress = _burnAddress;
+        profitCollectionAddress = _profitCollectionAddress;
     }
 
     function setTokenBuyer(address _tokenBuyer) external onlyRole(DEFAULT_ADMIN_ROLE){
         tokenBuyer = ITokenBuyer(_tokenBuyer);
     }
 
-    function setLockService(address _lock) external onlyRole(DEFAULT_ADMIN_ROLE){
-        lockService = PureFiLockService(_lock);
+    function setProfitCollectionAddress(address _profitCollectionAddress) external onlyRole(DEFAULT_ADMIN_ROLE){
+        profitCollectionAddress = _profitCollectionAddress;
     }
 
     function setTierData(
         uint8 _tierID,
-        uint64 _subscriptionDuration, //subscriptionDuration = token lockup time in seconds.
+        uint48 _subscriptionDuration, //subscriptionDuration = token lockup time in seconds.
         uint128 _priceInUSD, // tier price in USD 
         uint8 _burnRatePercent, // burn rate in percents with 2 decimals (100% = 10000)
-        uint8 _kycIncluded,
-        uint32 _amlIncluded) external onlyRole(DEFAULT_ADMIN_ROLE){
-        tiers[_tierID] = Tier(_subscriptionDuration,_priceInUSD,_burnRatePercent,_kycIncluded,_amlIncluded);
+        uint16 _kycIncluded,
+        uint48 _amlIncluded) external onlyRole(DEFAULT_ADMIN_ROLE){
+        tiers[_tierID] = Tier(1, _subscriptionDuration,_priceInUSD,_burnRatePercent,_kycIncluded,_amlIncluded);
+    }
+
+    function setTierIsActive(uint8 _tierID, uint8 _isActive) external onlyRole(DEFAULT_ADMIN_ROLE){
+        tiers[_tierID].isactive = _isActive;
     }
 
     function subscribe(uint8 _tier) external payable {
         require(tiers[_tier].priceInUSD > 0, 'Invalid tier provided');
+        require(tiers[_tier].isactive > 0, "Tier is not active. Can't subscribe");
 
-        uint256 burnDebt = 0;
+        uint256 tokensLeftFromCurrentSubscription = 0;
         //check for existing subscription
-        uint8 userSubscriptionTier = userSubscriptions[msg.sender].tier;
-        
-        if(userSubscriptionTier > 0){
-            (uint256 lockedBalance,) = lockService.getLockData(msg.sender);
+        uint8 userCurrentSubscriptionTier = userSubscriptions[msg.sender].tier;
+        if(userCurrentSubscriptionTier > 0){
             uint256 timeSubscribed = block.timestamp - userSubscriptions[msg.sender].dateSubscribed;
             // round timeSubscribed up to month
             timeSubscribed = (1 + timeSubscribed / MONTH) * MONTH;
             // for expired subscriptions set subscribed time to initial tier duration.
-            if (timeSubscribed > tiers[userSubscriptionTier].subscriptionDuration)
-                timeSubscribed = tiers[userSubscriptionTier].subscriptionDuration;
-            burnDebt = lockedBalance * timeSubscribed * tiers[userSubscriptionTier].burnRatePercent / (tiers[userSubscriptionTier].subscriptionDuration * P100); 
-            lockService.unlockUFI(msg.sender, lockedBalance);
-            emit Unsubscribed(msg.sender, userSubscriptionTier, uint64(block.timestamp), burnDebt);
+            if (timeSubscribed > tiers[userCurrentSubscriptionTier].subscriptionDuration)
+                timeSubscribed = tiers[userCurrentSubscriptionTier].subscriptionDuration;
+            uint256 unrealizedProfitFromCurrentSubscription = userSubscriptions[msg.sender].tokensDeposited * timeSubscribed * tiers[userCurrentSubscriptionTier].burnRatePercent / (tiers[userCurrentSubscriptionTier].subscriptionDuration * P100); 
+            if(unrealizedProfitFromCurrentSubscription > 0){
+                ufiToken.safeTransfer(profitCollectionAddress, unrealizedProfitFromCurrentSubscription);
+            }
+            tokensLeftFromCurrentSubscription = userSubscriptions[msg.sender].tokensDeposited - unrealizedProfitFromCurrentSubscription;
+            emit Unsubscribed(msg.sender, userCurrentSubscriptionTier, uint64(block.timestamp), unrealizedProfitFromCurrentSubscription);
+            removeUser(userSubscriptions[msg.sender].dateSubscribed, userSubscriptions[msg.sender].tokensDeposited);
             delete userSubscriptions[msg.sender];
         }
         //subscripbe to the _tier
-        (uint s_wbnb, uint256 s_ufi) = tokenBuyer.busdToUFI(tiers[_tier].priceInUSD);
+        (uint newSubscriptionPriceInWBNB, uint256 newSubscriptionPriceInUFI) = tokenBuyer.busdToUFI(tiers[_tier].priceInUSD);
         uint256 userBalanceUFI = ufiToken.balanceOf(msg.sender);
         uint256 ethRemaining = msg.value;
-        if(s_ufi + burnDebt > userBalanceUFI){
-            //not enough UFI balance on users wallet => buy UFI. 
-            //1. buy exact UFI amount that user lacks for subscription
-            //2. set ethToSend to a 0.1% more then estimated to make sure there will be enough UFI for subscription.
-            uint256 ethToSend = s_wbnb * (s_ufi + burnDebt - userBalanceUFI + 1) * 1001 / 1000 / s_ufi;
-            require(ethRemaining >= ethToSend, "Not enough msg.value for transaction");
-            tokenBuyer.buyExactTokens{value:ethToSend}((s_ufi + burnDebt - userBalanceUFI + 1), msg.sender);
-            ethRemaining-=ethToSend;
+        if(tokensLeftFromCurrentSubscription >= newSubscriptionPriceInUFI){
+            //this is the case when user subsribes to lower package and remaining tokens are more then enough
+            //=> refunding tokens back to user
+            ufiToken.safeTransfer(msg.sender, tokensLeftFromCurrentSubscription - newSubscriptionPriceInUFI);
         }
-        if(burnDebt > 0){
-            ufiToken.safeTransferFrom(msg.sender, burnAddress, burnDebt);
+        else {
+            //this is the case when remaining user tokens on the contract is not enough for the new subscription 
+            if(newSubscriptionPriceInUFI - tokensLeftFromCurrentSubscription > userBalanceUFI){
+                //this is the case when user doesn't have enough UFI tokens on his/her balance
+                //0. take all users UFI tokens
+                ufiToken.safeTransferFrom(msg.sender, address(this), userBalanceUFI);
+                //not enough UFI balance on users wallet => buy UFI. 
+                //1. buy exact UFI amount that user lacks for subscription
+                //2. set ethToSend to a 0.1% more then estimated to make sure there will be enough UFI for subscription.
+                uint256 ufiTokenToBuy = newSubscriptionPriceInUFI - tokensLeftFromCurrentSubscription - userBalanceUFI + 1;
+                uint256 ethToSend = newSubscriptionPriceInWBNB * ufiTokenToBuy * 1001 / 1000 / newSubscriptionPriceInUFI;
+                require(ethRemaining >= ethToSend, "Not enough msg.value for transaction");
+                tokenBuyer.buyExactTokens{value:ethToSend}(ufiTokenToBuy, address(this));
+                ethRemaining-=ethToSend;
+            } else {
+                //this is the case when user has enough tokens on his/her balance
+                uint256 ufiToClaim = newSubscriptionPriceInUFI - tokensLeftFromCurrentSubscription;
+                ufiToken.safeTransferFrom(msg.sender, address(this), ufiToClaim);
+            }
+
         }
-        //re-read balance
-        userBalanceUFI = ufiToken.balanceOf(msg.sender);
-        require(s_ufi <= userBalanceUFI, "Not enought UFI tokens on the subrsibers balance");
-        lockService.lockUFI(msg.sender, s_ufi, uint64(block.timestamp + tiers[_tier].subscriptionDuration));
-        userSubscriptions[msg.sender] = UserSubscription(_tier,uint64(block.timestamp),0);
-        emit Subscribed(msg.sender,_tier,uint64(block.timestamp),s_ufi);
+        
+        userSubscriptions[msg.sender] = UserSubscription(_tier, uint64(block.timestamp), uint128(newSubscriptionPriceInUFI), 0);
+        emit Subscribed(msg.sender, _tier, uint64(block.timestamp), newSubscriptionPriceInUFI);
+        addUser(block.timestamp, newSubscriptionPriceInUFI);
         if(ethRemaining > 0){
             payable(msg.sender).transfer(ethRemaining);
         }
@@ -129,20 +154,21 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
     function unsubscribe() external payable {
         uint8 userSubscriptionTier = userSubscriptions[msg.sender].tier;
         require(userSubscriptionTier > 0, "No subscription found");
-        (uint256 lockedBalance,) = lockService.getLockData(msg.sender);
         uint256 timeSubscribed = block.timestamp - userSubscriptions[msg.sender].dateSubscribed;
         // round timeSubscribed up to month
         timeSubscribed = (1 + timeSubscribed / MONTH) * MONTH;
         // for expired subscriptions set subscribed time to initial tier duration.
         if (timeSubscribed > tiers[userSubscriptionTier].subscriptionDuration)
             timeSubscribed = tiers[userSubscriptionTier].subscriptionDuration;
-        uint256 burnDebt = lockedBalance * timeSubscribed * tiers[userSubscriptionTier].burnRatePercent / (tiers[userSubscriptionTier].subscriptionDuration * P100); 
+        uint256 profit = userSubscriptions[msg.sender].tokensDeposited * timeSubscribed * tiers[userSubscriptionTier].burnRatePercent / (tiers[userSubscriptionTier].subscriptionDuration * P100); 
 
-        if(burnDebt > 0){
-            ufiToken.safeTransferFrom(msg.sender, burnAddress, burnDebt);
+        if(profit > 0){
+            ufiToken.safeTransfer(profitCollectionAddress, profit);
         }
+        ufiToken.safeTransfer(msg.sender, userSubscriptions[msg.sender].tokensDeposited - profit);
+        removeUser(userSubscriptions[msg.sender].dateSubscribed, userSubscriptions[msg.sender].tokensDeposited);
         delete userSubscriptions[msg.sender];
-        emit Unsubscribed(msg.sender, userSubscriptionTier, uint64(block.timestamp), burnDebt);
+        emit Unsubscribed(msg.sender, userSubscriptionTier, uint64(block.timestamp), profit);
     }
 
     /**
@@ -153,32 +179,43 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
     */
     function estimateSubscriptionPrice(address _holder, uint8 _tier) external view returns (uint256, uint256, uint256){
         require(tiers[_tier].priceInUSD > 0, 'Invalid tier provided');
+        require(tiers[_tier].isactive > 0, "Tier is not active. Can't subscribe");
 
-        uint256 burnDebt = 0;
-        uint256 ethToSend = 0;
+        uint256 tokensLeftFromCurrentSubscription = 0;
         //check for existing subscription
         uint8 userSubscriptionTier = userSubscriptions[_holder].tier;
         
         if(userSubscriptionTier > 0){
-            (uint256 lockedBalance,) = lockService.getLockData(_holder);
             uint256 timeSubscribed = block.timestamp - userSubscriptions[msg.sender].dateSubscribed;
             // round timeSubscribed up to month
             timeSubscribed = (1 + timeSubscribed / MONTH) * MONTH;
             // for expired subscriptions set subscribed time to initial tier duration.
             if (timeSubscribed > tiers[userSubscriptionTier].subscriptionDuration)
                 timeSubscribed = tiers[userSubscriptionTier].subscriptionDuration;
-            burnDebt = lockedBalance * timeSubscribed * tiers[userSubscriptionTier].burnRatePercent / (tiers[userSubscriptionTier].subscriptionDuration * P100); 
+            uint256 unrealizedProfitFromCurrentSubscription = userSubscriptions[_holder].tokensDeposited * timeSubscribed * tiers[userSubscriptionTier].burnRatePercent / (tiers[userSubscriptionTier].subscriptionDuration * P100); 
+            tokensLeftFromCurrentSubscription = userSubscriptions[msg.sender].tokensDeposited - unrealizedProfitFromCurrentSubscription;
         }
         //subscripbe to the _tier
-        (uint s_wbnb, uint256 s_ufi) = tokenBuyer.busdToUFI(tiers[_tier].priceInUSD);
+        (uint newSubscriptionPriceInWBNB, uint256 newSubscriptionPriceInUFI) = tokenBuyer.busdToUFI(tiers[_tier].priceInUSD);
         uint256 userBalanceUFI = ufiToken.balanceOf(_holder);
-        if(s_ufi + burnDebt > userBalanceUFI){
-            //not enough UFI balance on users wallet => buy UFI. 
-            //1. buy exact UFI amount that user lacks for subscription
-            //2. set ethToSend to a 0.1% more then estimated to make sure there will be enough UFI for subscription.
-            ethToSend = s_wbnb * (s_ufi + burnDebt - userBalanceUFI + 1) * 1001 / 1000 / s_ufi;
+
+
+        if(tokensLeftFromCurrentSubscription >= newSubscriptionPriceInUFI){
+            //this is the case when user subsribes to lower package and remaining tokens are more then enough
+            //=> refunding tokens back to user
+            return (0, 0, newSubscriptionPriceInUFI);
         }
-        return (s_ufi + burnDebt, ethToSend, s_ufi);
+        else {
+            //this is the case when remaining user tokens on the contract is not enough for the new subscription 
+            if(newSubscriptionPriceInUFI - tokensLeftFromCurrentSubscription > userBalanceUFI){
+                uint256 ufiTokenToBuy = newSubscriptionPriceInUFI - tokensLeftFromCurrentSubscription - userBalanceUFI + 1;
+                uint256 ethToSend = newSubscriptionPriceInWBNB * ufiTokenToBuy * 1001 / 1000 / newSubscriptionPriceInUFI;
+                return (newSubscriptionPriceInUFI - tokensLeftFromCurrentSubscription, ethToSend, newSubscriptionPriceInUFI);
+            } else {
+                return (newSubscriptionPriceInUFI - tokensLeftFromCurrentSubscription, 0, newSubscriptionPriceInUFI);
+            }
+
+        }
     }
 
     /**
@@ -190,12 +227,11 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
         4: locked tokens amount
      */
     function getUserData(address _user) external view returns (uint8, uint64, uint64, uint184, uint256) {
-        (uint256 lockedBalance,uint64 lockedUntil) = lockService.getLockData(_user);
         return (userSubscriptions[_user].tier,
                 userSubscriptions[_user].dateSubscribed,
-                lockedUntil,
+                userSubscriptions[_user].dateSubscribed + ((userSubscriptions[_user].tier > 0)?tiers[userSubscriptions[_user].tier].subscriptionDuration:0),
                 userSubscriptions[_user].userdata,
-                lockedBalance);
+                userSubscriptions[_user].tokensDeposited);
         
     }
 
@@ -206,14 +242,61 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
         2: burn rate percent
         3: kyc Included
         4: aml Included
+        5: is active flag
      */
-    function getTierData(uint8 _tier) external view returns(uint64, uint128, uint16, uint8, uint32){
+    function getTierData(uint8 _tier) external view returns(uint48, uint128, uint8, uint16, uint48, uint8){
         return (tiers[_tier].subscriptionDuration,
                 tiers[_tier].priceInUSD,
                 tiers[_tier].burnRatePercent,
                 tiers[_tier].kycIncluded,
-                tiers[_tier].amlIncluded
+                tiers[_tier].amlIncluded,
+                tiers[_tier].isactive
                 );
+    }
+
+    function getUserStat() external view returns(uint256, uint256, uint256) {
+        uint256 usersAmount = (userstat >> 224) & 0x00000000000000000000000000000000000000000000000000000000FFFFFFFF; //32
+        uint256 sDepi =       (userstat >> 128) & 0x0000000000000000000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF; //96
+        uint256 sTiDepi =     (userstat)        & 0x00000000000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF; //128
+        return(usersAmount,sDepi,sTiDepi);
+    }
+
+    function addUser(uint256 dateSubscribed, uint256 tokensDeposited) private {
+        //0x - 04 bytes //number of users
+        //0x - 12 bytes //sigma dep_i
+        //0x - 16 bytes //sigma t_i*dep_i
+        uint256 usersAmount = (userstat >> 224) & 0x00000000000000000000000000000000000000000000000000000000FFFFFFFF; //32
+        uint256 sDepi =       (userstat >> 128) & 0x0000000000000000000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF; //96
+        uint256 sTiDepi =     (userstat)        & 0x00000000000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF; //128
+
+        usersAmount += 1;
+        sDepi += uint96(tokensDeposited);
+        sTiDepi += uint128(tokensDeposited * dateSubscribed);
+
+        uint256 stat = usersAmount << 224 
+                        + (sDepi & 0x0000000000000000000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF) << 128
+                        + (sTiDepi & 0x00000000000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF);
+        //update user stat
+        userstat = stat;
+    }
+
+    function removeUser(uint256 dateSubscribed, uint256 tokensDeposited) private {
+        //0x - 04 bytes //number of users
+        //0x - 12 bytes //sigma dep_i
+        //0x - 16 bytes //sigma t_i*dep_i
+        uint256 usersAmount = (userstat >> 224) & 0x00000000000000000000000000000000000000000000000000000000FFFFFFFF; //32
+        uint256 sDepi =       (userstat >> 128) & 0x0000000000000000000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF; //96
+        uint256 sTiDepi =     (userstat)        & 0x00000000000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF; //128
+
+        usersAmount -= 1;
+        sDepi -= uint96(tokensDeposited);
+        sTiDepi -= uint128(tokensDeposited * dateSubscribed);
+
+        uint256 stat = usersAmount << 224 
+                        + (sDepi & 0x0000000000000000000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF) << 128
+                        + (sTiDepi & 0x00000000000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF);
+        //update user stat
+        userstat = stat;
     }
     
 
