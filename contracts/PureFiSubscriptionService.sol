@@ -90,65 +90,11 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
     }
 
     function subscribe(uint8 _tier) external payable {
-        require(tiers[_tier].priceInUSD > 0, 'Invalid tier provided');
-        require(tiers[_tier].isactive > 0, "Tier is not active. Can't subscribe");
-
-        uint256 tokensLeftFromCurrentSubscription = 0;
-        //check for existing subscription
-        uint8 userCurrentSubscriptionTier = userSubscriptions[msg.sender].tier;
-        if(userCurrentSubscriptionTier > 0){
-            uint256 timeSubscribed = block.timestamp - userSubscriptions[msg.sender].dateSubscribed;
-            // round timeSubscribed up to month
-            timeSubscribed = (1 + timeSubscribed / MONTH) * MONTH;
-            // for expired subscriptions set subscribed time to initial tier duration.
-            if (timeSubscribed > tiers[userCurrentSubscriptionTier].subscriptionDuration)
-                timeSubscribed = tiers[userCurrentSubscriptionTier].subscriptionDuration;
-            uint256 unrealizedProfitFromCurrentSubscription = userSubscriptions[msg.sender].tokensDeposited * timeSubscribed * tiers[userCurrentSubscriptionTier].burnRatePercent / (tiers[userCurrentSubscriptionTier].subscriptionDuration * P100); 
-            if(unrealizedProfitFromCurrentSubscription > 0){
-                ufiToken.safeTransfer(profitCollectionAddress, unrealizedProfitFromCurrentSubscription);
-            }
-            tokensLeftFromCurrentSubscription = userSubscriptions[msg.sender].tokensDeposited - unrealizedProfitFromCurrentSubscription;
-            emit Unsubscribed(msg.sender, userCurrentSubscriptionTier, uint64(block.timestamp), unrealizedProfitFromCurrentSubscription);
-            removeUser(userSubscriptions[msg.sender].dateSubscribed, userSubscriptions[msg.sender].tokensDeposited);
-            delete userSubscriptions[msg.sender];
-        }
-        //subscripbe to the _tier
-        (uint newSubscriptionPriceInWBNB, uint256 newSubscriptionPriceInUFI) = tokenBuyer.busdToUFI(tiers[_tier].priceInUSD);
-        uint256 userBalanceUFI = ufiToken.balanceOf(msg.sender);
-        uint256 ethRemaining = msg.value;
-        if(tokensLeftFromCurrentSubscription >= newSubscriptionPriceInUFI){
-            //this is the case when user subsribes to lower package and remaining tokens are more then enough
-            //=> refunding tokens back to user
-            ufiToken.safeTransfer(msg.sender, tokensLeftFromCurrentSubscription - newSubscriptionPriceInUFI);
-        }
-        else {
-            //this is the case when remaining user tokens on the contract is not enough for the new subscription 
-            if(newSubscriptionPriceInUFI - tokensLeftFromCurrentSubscription > userBalanceUFI){
-                //this is the case when user doesn't have enough UFI tokens on his/her balance
-                //0. take all users UFI tokens
-                ufiToken.safeTransferFrom(msg.sender, address(this), userBalanceUFI);
-                //not enough UFI balance on users wallet => buy UFI. 
-                //1. buy exact UFI amount that user lacks for subscription
-                //2. set ethToSend to a 0.1% more then estimated to make sure there will be enough UFI for subscription.
-                uint256 ufiTokenToBuy = newSubscriptionPriceInUFI - tokensLeftFromCurrentSubscription - userBalanceUFI + 1;
-                uint256 ethToSend = newSubscriptionPriceInWBNB * ufiTokenToBuy * 1001 / 1000 / newSubscriptionPriceInUFI;
-                require(ethRemaining >= ethToSend, "Not enough msg.value for transaction");
-                tokenBuyer.buyExactTokens{value:ethToSend}(ufiTokenToBuy, address(this));
-                ethRemaining-=ethToSend;
-            } else {
-                //this is the case when user has enough tokens on his/her balance
-                uint256 ufiToClaim = newSubscriptionPriceInUFI - tokensLeftFromCurrentSubscription;
-                ufiToken.safeTransferFrom(msg.sender, address(this), ufiToClaim);
-            }
-
-        }
-        
-        userSubscriptions[msg.sender] = UserSubscription(_tier, uint64(block.timestamp), uint128(newSubscriptionPriceInUFI), 0);
-        emit Subscribed(msg.sender, _tier, uint64(block.timestamp), newSubscriptionPriceInUFI);
-        addUser(block.timestamp, newSubscriptionPriceInUFI);
-        if(ethRemaining > 0){
-            payable(msg.sender).transfer(ethRemaining);
-        }
+       _subscribe(_tier, msg.sender);
+    }
+    
+     function subscribeFor(uint8 _tier, address _subscriber) external payable {
+       _subscribe(_tier, _subscriber);
     }
 
     function unsubscribe() external payable {
@@ -273,8 +219,8 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
         sDepi += uint96(tokensDeposited);
         sTiDepi += uint128(tokensDeposited * dateSubscribed);
 
-        uint256 stat = usersAmount << 224 
-                        + (sDepi & 0x0000000000000000000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF) << 128
+        uint256 stat = (usersAmount << 224)
+                        + ((sDepi & 0x0000000000000000000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF) << 128)
                         + (sTiDepi & 0x00000000000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF);
         //update user stat
         userstat = stat;
@@ -290,13 +236,75 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
 
         usersAmount -= 1;
         sDepi -= uint96(tokensDeposited);
-        sTiDepi -= uint128(tokensDeposited * dateSubscribed);
-
-        uint256 stat = usersAmount << 224 
-                        + (sDepi & 0x0000000000000000000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF) << 128
-                        + (sTiDepi & 0x00000000000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF);
-        //update user stat
+        sTiDepi -= uint128(tokensDeposited * dateSubscribed);  
+        
+        uint256 stat = (usersAmount << 224)
+                        + ((sDepi & 0x0000000000000000000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF) << 128)
+                        + ((sTiDepi & 0x00000000000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF));
+        // update user stat
         userstat = stat;
+    }
+
+    function _subscribe(uint8 _tier, address _subscriber) private {
+        require(tiers[_tier].priceInUSD > 0, 'Invalid tier provided');
+        require(tiers[_tier].isactive > 0, "Tier is not active. Can't subscribe");
+
+        uint256 tokensLeftFromCurrentSubscription = 0;
+        //check for existing subscription
+        uint8 userCurrentSubscriptionTier = userSubscriptions[_subscriber].tier;
+        if(userCurrentSubscriptionTier > 0){
+            uint256 timeSubscribed = block.timestamp - userSubscriptions[_subscriber].dateSubscribed;
+            // round timeSubscribed up to month
+            timeSubscribed = (1 + timeSubscribed / MONTH) * MONTH;
+            // for expired subscriptions set subscribed time to initial tier duration.
+            if (timeSubscribed > tiers[userCurrentSubscriptionTier].subscriptionDuration)
+                timeSubscribed = tiers[userCurrentSubscriptionTier].subscriptionDuration;
+            uint256 unrealizedProfitFromCurrentSubscription = userSubscriptions[_subscriber].tokensDeposited * timeSubscribed * tiers[userCurrentSubscriptionTier].burnRatePercent / (tiers[userCurrentSubscriptionTier].subscriptionDuration * P100); 
+            if(unrealizedProfitFromCurrentSubscription > 0){
+                ufiToken.safeTransfer(profitCollectionAddress, unrealizedProfitFromCurrentSubscription);
+            }
+            tokensLeftFromCurrentSubscription = userSubscriptions[_subscriber].tokensDeposited - unrealizedProfitFromCurrentSubscription;
+            emit Unsubscribed(_subscriber, userCurrentSubscriptionTier, uint64(block.timestamp), unrealizedProfitFromCurrentSubscription);
+            removeUser(userSubscriptions[_subscriber].dateSubscribed, userSubscriptions[_subscriber].tokensDeposited);
+            delete userSubscriptions[_subscriber];
+        }
+        //subscripbe to the _tier
+        (uint newSubscriptionPriceInWBNB, uint256 newSubscriptionPriceInUFI) = tokenBuyer.busdToUFI(tiers[_tier].priceInUSD);
+        uint256 userBalanceUFI = ufiToken.balanceOf(_subscriber);
+        uint256 ethRemaining = msg.value;
+        if(tokensLeftFromCurrentSubscription >= newSubscriptionPriceInUFI){
+            //this is the case when user subsribes to lower package and remaining tokens are more then enough
+            //=> refunding tokens back to user
+            ufiToken.safeTransfer(_subscriber, tokensLeftFromCurrentSubscription - newSubscriptionPriceInUFI);
+        }
+        else {
+            //this is the case when remaining user tokens on the contract is not enough for the new subscription 
+            if(newSubscriptionPriceInUFI - tokensLeftFromCurrentSubscription > userBalanceUFI){
+                //this is the case when user doesn't have enough UFI tokens on his/her balance
+                //0. take all users UFI tokens
+                ufiToken.safeTransferFrom(msg.sender, address(this), userBalanceUFI);
+                //not enough UFI balance on users wallet => buy UFI. 
+                //1. buy exact UFI amount that user lacks for subscription
+                //2. set ethToSend to a 0.1% more then estimated to make sure there will be enough UFI for subscription.
+                uint256 ufiTokenToBuy = newSubscriptionPriceInUFI - tokensLeftFromCurrentSubscription - userBalanceUFI + 1;
+                uint256 ethToSend = newSubscriptionPriceInWBNB * ufiTokenToBuy * 1001 / 1000 / newSubscriptionPriceInUFI;
+                require(ethRemaining >= ethToSend, "Not enough msg.value for transaction");
+                tokenBuyer.buyExactTokens{value:ethToSend}(ufiTokenToBuy, address(this));
+                ethRemaining-=ethToSend;
+            } else {
+                //this is the case when user has enough tokens on his/her balance
+                uint256 ufiToClaim = newSubscriptionPriceInUFI - tokensLeftFromCurrentSubscription;
+                ufiToken.safeTransferFrom(msg.sender, address(this), ufiToClaim);
+            }
+
+        }
+        
+        userSubscriptions[_subscriber] = UserSubscription(_tier, uint64(block.timestamp), uint128(newSubscriptionPriceInUFI), 0);
+        emit Subscribed(_subscriber, _tier, uint64(block.timestamp), newSubscriptionPriceInUFI);
+        addUser(block.timestamp, newSubscriptionPriceInUFI);
+        if(ethRemaining > 0){
+            payable(msg.sender).transfer(ethRemaining);
+        }
     }
     
 

@@ -79,30 +79,21 @@ contract('PureFi Subscription Test', (accounts) => {
 
     before(async () => {
         burnAddress = accounts[9];
-        await PureFiVerifier.deployed().then(instance => verifier = instance);
-
-        let issuerRegAddress = await verifier.issuerRegistry.call();
-
-        issuerRegistry = await PureFiIssuerRegistry.at(issuerRegAddress);
-
-        console.log("verifier = ",verifier.address);
-        console.log("issuerRegistry = ",issuerRegistry.address);
-
 
         await TestToken.new(toBN(100000000).mul(decimals),"TestUFI","UFI").then(instance => pureFiToken = instance); 
-        await PureFiLockService.new().then(instance => lockContract = instance);
-        await lockContract.initialize(accounts[0]);
+        // await PureFiLockService.new().then(instance => lockContract = instance);
+        // await lockContract.initialize(accounts[0]);
         
 
-        await TestBotProtection.new(pureFiToken.address, lockContract.address).then(instance => botProtector = instance); 
-        await pureFiToken.setBotProtector.sendTransaction(botProtector.address);
+        // await TestBotProtection.new(pureFiToken.address, lockContract.address).then(instance => botProtector = instance); 
+        // await pureFiToken.setBotProtector.sendTransaction(botProtector.address);
         
         await PureFiTokenBuyerBSC.new().then(instance => tokenBuyer = instance); 
         await PureFiSubscriptionService.new().then(instance => subscriptionContract = instance); 
 
         // address _admin, address _ufi, address _lock, address _tokenBuyer, address _burnAddress
-        await subscriptionContract.initialize(accounts[0],pureFiToken.address,lockContract.address,tokenBuyer.address,burnAddress);
-        await lockContract.grantRole.sendTransaction(web3.utils.keccak256('UFI_TRUSTED_PAYMENT_SERVICE'),subscriptionContract.address);
+        await subscriptionContract.initialize(accounts[0],pureFiToken.address,tokenBuyer.address,burnAddress);
+        // await lockContract.grantRole.sendTransaction(web3.utils.keccak256('UFI_TRUSTED_PAYMENT_SERVICE'),subscriptionContract.address);
 
         
     });
@@ -115,8 +106,16 @@ contract('PureFi Subscription Test', (accounts) => {
 
         let sData = await subscriptionContract.getTierData.call(toBN(1));
         console.log("Tier data:");
-        for(let i=0;i<5;i++){
+        for(let i=0;i<6;i++){
             console.log(i," = ",sData[i].toString());
+        }
+        {
+            let userStat = await subscriptionContract.getUserStat.call();
+            console.log("user stat: ");
+            for(let i=0;i<3;i++){
+                
+                console.log(i," = ",userStat[i].toString());
+            }
         }
   
     });
@@ -133,15 +132,20 @@ contract('PureFi Subscription Test', (accounts) => {
 
         {
             let balanceUFI = await pureFiToken.balanceOf.call(buyer);
-            let balanceUFILocker = (await lockContract.getLockData.call(buyer))[0];
+            let balanceUFILocker = (await subscriptionContract.getUserData.call(buyer))[4];
             console.log("BEFORE: Balance: ",balanceUFI.toString()," locked: ",balanceUFILocker.toString());
         }
+
+        let ufiRequired;
         {
             let estimateData = await subscriptionContract.estimateSubscriptionPrice.call(buyer, tierToBuy);
+            ufiRequired = estimateData[0];
             console.log("UFI Required",estimateData[0].toString());
             console.log("ETH Required",estimateData[1].toString());
             console.log("UFI Locked for tier",estimateData[2].toString());
         }
+
+        await pureFiToken.approve.sendTransaction(subscriptionContract.address,ufiRequired,{from:buyer});
         let subRec = await subscriptionContract.subscribe(tierToBuy, {from: buyer});
         printEvents(subRec,"subscribe");
 
@@ -152,8 +156,16 @@ contract('PureFi Subscription Test', (accounts) => {
         }
         {
             let balanceUFI = await pureFiToken.balanceOf.call(buyer);
-            let balanceUFILocker = (await lockContract.getLockData.call(buyer))[0];
+            let balanceUFILocker = (await subscriptionContract.getUserData.call(buyer))[4];
             console.log("AFTER: Balance: ",balanceUFI.toString()," locked: ",balanceUFILocker.toString());
+        }
+        {
+            let userStat = await subscriptionContract.getUserStat.call();
+            console.log("user stat: ");
+            for(let i=0;i<3;i++){
+                
+                console.log(i," = ",userStat[i].toString());
+            }
         }
   
     });
@@ -161,10 +173,12 @@ contract('PureFi Subscription Test', (accounts) => {
     it('subscribe having no tokens', async () => {
 
         let tierToBuy = toBN(1);
-        let buyer = accounts[1];
+        let buyer = accounts[2];
         //-----------------------
         //send 1000 tokens so that function has to buy less
-        await pureFiToken.transfer(buyer,toBN(1000).mul(decimals),{from:accounts[0]});
+        let partialTokenAmount = toBN(1000).mul(decimals);
+        await pureFiToken.transfer(buyer,partialTokenAmount,{from:accounts[0]});
+        await pureFiToken.approve.sendTransaction(subscriptionContract.address,partialTokenAmount,{from:buyer});
         //-----------------------
         let tierData = await subscriptionContract.getTierData.call(tierToBuy);
 
@@ -173,7 +187,7 @@ contract('PureFi Subscription Test', (accounts) => {
 
         {
             let balanceUFI = await pureFiToken.balanceOf.call(buyer);
-            let balanceUFILocker = (await lockContract.getLockData.call(buyer))[0];
+            let balanceUFILocker = (await subscriptionContract.getUserData.call(buyer))[4];
             console.log("BEFORE: Balance: ",balanceUFI.toString()," locked: ",balanceUFILocker.toString());
         }
         
@@ -192,7 +206,7 @@ contract('PureFi Subscription Test', (accounts) => {
         }
         {
             let balanceUFI = await pureFiToken.balanceOf.call(buyer);
-            let balanceUFILocker = (await lockContract.getLockData.call(buyer))[0];
+            let balanceUFILocker = (await subscriptionContract.getUserData.call(buyer))[4];
             console.log("AFTER: Balance: ",balanceUFI.toString()," locked: ",balanceUFILocker.toString());
         }
         {
@@ -201,17 +215,24 @@ contract('PureFi Subscription Test', (accounts) => {
             let balanceUFI = await realUFIToken.balanceOf.call(buyer);
             console.log("AFTER: REAL UFI Balance: ",balanceUFI.toString());
         }
+        {
+            let userStat = await subscriptionContract.getUserStat.call();
+            console.log("user stat: ");
+            for(let i=0;i<3;i++){
+                
+                console.log(i," = ",userStat[i].toString());
+            }
+        }
   
     });
-
 
     it('re-subscribe having tokens', async () => {
 
         let tierToBuy = toBN(2);
         let buyer = accounts[0];
         // approve so that some tokens could be burned
-        {
-            let balanceUFILocker = (await lockContract.getLockData.call(buyer))[0];
+        if(false){
+            let balanceUFILocker = (await subscriptionContract.getUserData.call(buyer))[4];
             await pureFiToken.approve.sendTransaction(subscriptionContract.address,balanceUFILocker,{from:buyer});
         }
         //-----------------------
@@ -222,15 +243,18 @@ contract('PureFi Subscription Test', (accounts) => {
 
         {
             let balanceUFI = await pureFiToken.balanceOf.call(buyer);
-            let balanceUFILocker = (await lockContract.getLockData.call(buyer))[0];
+            let balanceUFILocker = (await subscriptionContract.getUserData.call(buyer))[4];
             console.log("BEFORE: Balance: ",balanceUFI.toString()," locked: ",balanceUFILocker.toString());
         }
+        let ufiRequired;
         {
             let estimateData = await subscriptionContract.estimateSubscriptionPrice.call(buyer, tierToBuy);
+            ufiRequired = estimateData[0];
             console.log("UFI Required",estimateData[0].toString());
             console.log("ETH Required",estimateData[1].toString());
             console.log("UFI Locked for tier",estimateData[2].toString());
         }
+        await pureFiToken.approve.sendTransaction(subscriptionContract.address,ufiRequired,{from:buyer});
         let subRec = await subscriptionContract.subscribe(tierToBuy, {from: buyer});
         printEvents(subRec,"subscribe");
 
@@ -241,11 +265,59 @@ contract('PureFi Subscription Test', (accounts) => {
         }
         {
             let balanceUFI = await pureFiToken.balanceOf.call(buyer);
-            let balanceUFILocker = (await lockContract.getLockData.call(buyer))[0];
+            let balanceUFILocker = (await subscriptionContract.getUserData.call(buyer))[4];
             console.log("AFTER: Balance: ",balanceUFI.toString()," locked: ",balanceUFILocker.toString());
         }
-  
+        {
+            let userStat = await subscriptionContract.getUserStat.call();
+            console.log("user stat: ");
+            for(let i=0;i<3;i++){
+                
+                console.log(i," = ",userStat[i].toString());
+            }
+        }
     });
+
+    it('unsubscribe having', async () => {
+
+        let buyer = accounts[0];
+        
+        {
+            let balanceUFI = await pureFiToken.balanceOf.call(buyer);
+            let balanceUFILocker = (await subscriptionContract.getUserData.call(buyer))[4];
+            console.log("BEFORE: Balance: ",balanceUFI.toString()," locked: ",balanceUFILocker.toString());
+        }
+        
+        let unsubRec = await subscriptionContract.unsubscribe({from: buyer});
+        printEvents(unsubRec,"unsubscribe");
+
+        let userData = await subscriptionContract.getUserData.call(buyer);
+        console.log("Subscription data: ");
+        for(let i=0;i<5;i++){
+            console.log(i," = ",userData[i].toString());
+        }
+        {
+            let balanceUFI = await pureFiToken.balanceOf.call(buyer);
+            let balanceUFILocker = (await subscriptionContract.getUserData.call(buyer))[4];
+            console.log("AFTER: Balance: ",balanceUFI.toString()," locked: ",balanceUFILocker.toString());
+        }
+        {
+            //real UFI check
+            let realUFIToken = await TestToken.at('0xe2a59D5E33c6540E18aAA46BF98917aC3158Db0D');
+            let balanceUFI = await realUFIToken.balanceOf.call(buyer);
+            console.log("AFTER: REAL UFI Balance: ",balanceUFI.toString());
+        }
+        {
+            let userStat = await subscriptionContract.getUserStat.call();
+            console.log("user stat: ");
+            for(let i=0;i<3;i++){
+                
+                console.log(i," = ",userStat[i].toString());
+            }
+        }
+    });
+
+
    
     
    
