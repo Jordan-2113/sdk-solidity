@@ -5,30 +5,27 @@ import "../../../openzeppelin-contracts-upgradeable-master/contracts/token/ERC20
 import "../../../openzeppelin-contracts-upgradeable-master/contracts/token/ERC20/ERC20Upgradeable.sol";
 import "../../../openzeppelin-contracts-upgradeable-master/contracts/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import "./IERC20Full.sol";
-import "../../PureFiVerifier.sol";
-import "../../PureFiRouter.sol";
+import "../../PureFiContext.sol";
 
-contract FilteredPool is ERC20Upgradeable{
+contract FilteredPool is ERC20Upgradeable, PureFiContext {
 
     using SafeERC20Upgradeable for IERC20Full;
 
     IERC20Full public basicToken;
-
-    PureFiRouter public pureFiRouter;
 
     uint256 public totalCap;
 
     event Deposit(address indexed writer, uint256 amount);
     event Withdraw(address indexed writer, uint256 amount);
 
-    function __Pool_init(address _basicToken, address _pureFiRouter, string memory _description, string memory _symbol) internal initializer {
+    function __Pool_init(address _basicToken, address _pureFiVerifier, string memory _description, string memory _symbol) internal initializer {
         __ERC20_init(_description, _symbol);
-        __Pool_init_unchained(_basicToken, _pureFiRouter);
+        __PureFiContext_init_unchained(_pureFiVerifier);
+        __Pool_init_unchained(_basicToken);
     }
 
-    function __Pool_init_unchained(address _basicToken, address _pureFiRouter) internal initializer {
+    function __Pool_init_unchained(address _basicToken) internal initializer {
         basicToken = IERC20Full(_basicToken);
-        pureFiRouter = PureFiRouter(_pureFiRouter);
     }
 
     /**
@@ -47,18 +44,7 @@ contract FilteredPool is ERC20Upgradeable{
         address _to,
         uint256[] memory data, 
         bytes memory signature
-    ) external virtual {
-        require(pureFiRouter.verifyIssuerSignature(data,signature), "Signature invalid");
-        require(address(uint160(data[3])) == msg.sender, "Verifier: tx sender doesn't match verified wallet");
-        // grace time recommended:
-        // Ethereum: 10 min
-        // BSC: 3 min
-        require(data[2] + 600 >= block.timestamp, "Verifier: verification data expired");
-        // AML Risk Score rule checks:
-        // 431001...431099: 
-        // [431] stands for AML Risk Score Check, 
-        // [001..099] - risk score threshold. I.e. validation passed when risk score <= [xxx]; 
-        require(data[1] == 431040, "Verifier: rule verification failed");
+    ) external virtual compliesDefaultRule(DefaultRule.KYCAML, msg.sender, data, signature) {
         _deposit(_amount, _to);
        
     }
@@ -72,11 +58,13 @@ contract FilteredPool is ERC20Upgradeable{
     function withdrawTo(
         uint256 _amount,
         address _to
-    ) external virtual {
+    ) external 
+    /** at this point we might require just on-chain KYC, so that the user is "known". no funds AML check required at this point */
+    requiresOnChainKYC(msg.sender) {
         _withdraw(_amount,_to);
     }
 
-    function _deposit(uint256 amount, address to) internal virtual {
+    function _deposit(uint256 amount, address to) private {
         _beforeDeposit(amount, msg.sender, to);
         basicToken.safeTransferFrom(msg.sender, address(this), amount);
         uint256 mintAmount = totalCap != 0 ? amount * totalSupply() / totalCap : amount * (10**uint256(decimals()))/ (10**uint256(basicToken.decimals()));
@@ -86,7 +74,7 @@ contract FilteredPool is ERC20Upgradeable{
         _afterDeposit(amount, mintAmount,  msg.sender, to);
     }
 
-    function _withdraw(uint256 amountLiquidity, address to) internal virtual {
+    function _withdraw(uint256 amountLiquidity, address to) private {
         _beforeWithdraw(amountLiquidity, msg.sender, to);
         uint256 revenue = totalSupply() != 0 ? amountLiquidity * totalCap / totalSupply() : amountLiquidity;
         require(revenue <= basicToken.balanceOf(address(this)), "Not enough Basic Token tokens on the balance to withdraw");
@@ -96,6 +84,9 @@ contract FilteredPool is ERC20Upgradeable{
         emit Withdraw(msg.sender, revenue);
         _afterWithdraw(revenue, msg.sender, to);
     }
+
+    /** Reject unverified user transaction that result in pool token transfers */
+    function _beforeTokenTransfer(address from, address to, uint256 amount) internal virtual override rejectUnverified {}
 
     function _beforeDeposit(uint256 amountTokenSent, address sender, address holder) internal virtual {}
     function _afterDeposit(uint256 amountTokenSent, uint256 amountLiquidityGot, address sender, address holder) internal virtual {}

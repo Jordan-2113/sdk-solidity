@@ -55,7 +55,7 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
     */
     function version() public pure returns(uint32){
         // 000.000.000 - Major.minor.internal
-        return 2000001;
+        return 2000002;
     }
 
     function initialize(address _admin, address _ufi, address _tokenBuyer, address _profitCollectionAddress) public initializer{
@@ -93,7 +93,7 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
        _subscribe(_tier, msg.sender);
     }
     
-     function subscribeFor(uint8 _tier, address _subscriber) external payable {
+    function subscribeFor(uint8 _tier, address _subscriber) external payable {
        _subscribe(_tier, _subscriber);
     }
 
@@ -132,14 +132,14 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
         uint8 userSubscriptionTier = userSubscriptions[_holder].tier;
         
         if(userSubscriptionTier > 0){
-            uint256 timeSubscribed = block.timestamp - userSubscriptions[msg.sender].dateSubscribed;
+            uint256 timeSubscribed = block.timestamp - userSubscriptions[_holder].dateSubscribed;
             // round timeSubscribed up to month
             timeSubscribed = (1 + timeSubscribed / MONTH) * MONTH;
             // for expired subscriptions set subscribed time to initial tier duration.
             if (timeSubscribed > tiers[userSubscriptionTier].subscriptionDuration)
                 timeSubscribed = tiers[userSubscriptionTier].subscriptionDuration;
             uint256 unrealizedProfitFromCurrentSubscription = userSubscriptions[_holder].tokensDeposited * timeSubscribed * tiers[userSubscriptionTier].burnRatePercent / (tiers[userSubscriptionTier].subscriptionDuration * P100); 
-            tokensLeftFromCurrentSubscription = userSubscriptions[msg.sender].tokensDeposited - unrealizedProfitFromCurrentSubscription;
+            tokensLeftFromCurrentSubscription = userSubscriptions[_holder].tokensDeposited - unrealizedProfitFromCurrentSubscription;
         }
         //subscripbe to the _tier
         (uint newSubscriptionPriceInWBNB, uint256 newSubscriptionPriceInUFI) = tokenBuyer.busdToUFI(tiers[_tier].priceInUSD);

@@ -2,12 +2,12 @@ pragma solidity >=0.8.0;
 
 import "../openzeppelin-contracts-upgradeable-master/contracts/security/PausableUpgradeable.sol";
 import "../openzeppelin-contracts-upgradeable-master/contracts/access/OwnableUpgradeable.sol";
-import "./PureFiRouter.sol";
+import "./PureFiIssuerRegistry.sol";
 import "./libraries/SignLib.sol";
 
 contract PureFiWhitelist is PausableUpgradeable, OwnableUpgradeable, SignLib{
     
-    PureFiRouter private router;
+    PureFiIssuerRegistry private issuerRegistry;
     mapping (address=> mapping (uint256 => Verification)) registry;
 
     event AddressWhitelisted(address indexed user, uint256 indexed ruleID);
@@ -31,14 +31,14 @@ contract PureFiWhitelist is PausableUpgradeable, OwnableUpgradeable, SignLib{
         return 1002001;
     }
 
-    function initialize(address _router) public initializer{
+    function initialize(address _issuerRegistry) public initializer{
         __Ownable_init();
         __Pausable_init_unchained();
-        router = PureFiRouter(_router);
+        issuerRegistry = PureFiIssuerRegistry(_issuerRegistry);
     }
 
     modifier onlyIssuer(){
-        require (router.isValidIssuer(msg.sender), "Whitelist: sender is not a registered Issuer");
+        require (issuerRegistry.isValidIssuer(msg.sender), "Whitelist: sender is not a registered Issuer");
         _;
     }
 
@@ -68,7 +68,7 @@ contract PureFiWhitelist is PausableUpgradeable, OwnableUpgradeable, SignLib{
     */
     function whitelistUserData(uint256[] memory data, bytes memory signature) external whenNotPaused {
       address recoveredIssuer = recoverSigner(keccak256(abi.encodePacked(data[0], data[1], data[2], data[3], data[4])), signature);
-      require (router.isValidIssuer(recoveredIssuer), "Whitelist: signer is not a registered Issuer");
+      require (issuerRegistry.isValidIssuer(recoveredIssuer), "Whitelist: signer is not a registered Issuer");
       require (uint64(data[3]) < block.timestamp, "Whitelist: invalid validOn param");
       require (uint64(data[4]) >= block.timestamp, "Whitelist: invalid validUntil param");
       address _user = address(uint160(data[0]));

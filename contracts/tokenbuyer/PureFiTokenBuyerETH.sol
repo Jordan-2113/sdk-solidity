@@ -1,16 +1,16 @@
 pragma solidity ^0.8.0;
 
-import "./pancake/interfaces/IPancakeRouter01.sol";
-import "./pancake/interfaces/IPancakePair.sol";
-import "./pancake/interfaces/IPancakeFactory.sol";
+import "./uniswap/RouterInterface.sol";
+import "./uniswap/interfaces/IUniswapV2Pair.sol";
 import "../../openzeppelin-contracts-upgradeable-master/contracts/access/OwnableUpgradeable.sol";
 import "./ITokenBuyer.sol";
 
-contract PureFiTokenBuyerBSC is OwnableUpgradeable, ITokenBuyer {
+contract PureFiTokenBuyerETH is OwnableUpgradeable, ITokenBuyer {
 
     uint16 public constant PERCENT_DENOM = 10000;
-    address public constant targetTokenAddress = 0xe2a59D5E33c6540E18aAA46BF98917aC3158Db0D;
-    uint16 public slippage;// 
+    address public constant targetTokenAddress = 0xcDa4e840411C00a614aD9205CAEC807c7458a0E3;
+
+    uint16 public slippage;
 
     event TokenPurchase(address indexed who, uint256 bnbIn, uint256 ufiOut);
 
@@ -37,11 +37,11 @@ contract PureFiTokenBuyerBSC is OwnableUpgradeable, ITokenBuyer {
     }
 
     function routerAddress() public pure returns(address) {
-      return 0x10ED43C718714eb63d5aA57B78B54704E256024E;
+      return 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
     }
 
     function buyToken(address _token, address _to) external override payable returns (uint256){
-        if(_token == 0xe2a59D5E33c6540E18aAA46BF98917aC3158Db0D){
+        if(_token == targetTokenAddress){
             return _buy(_to);
         }
         else {
@@ -51,11 +51,11 @@ contract PureFiTokenBuyerBSC is OwnableUpgradeable, ITokenBuyer {
 
     function busdToUFI(uint256 _amountBUSD) external override view returns (uint256,uint256) { //returns (amount WBNB, amount UFI)
         address[] memory evaluatePath = new address[](3);
-        evaluatePath[0]=0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56; //busd
-        evaluatePath[1]=IPancakeRouter01(routerAddress()).WETH(); //wbnb 
-        evaluatePath[2]=targetTokenAddress; //ufi 
+        evaluatePath[0]=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48; //USDC
+        evaluatePath[1]=IUniswapV2Router01(routerAddress()).WETH(); //WETH
+        evaluatePath[2]=targetTokenAddress;//UFI
 
-        uint[] memory amounts = IPancakeRouter01(routerAddress()).getAmountsOut(_amountBUSD, evaluatePath);
+        uint[] memory amounts = IUniswapV2Router01(routerAddress()).getAmountsOut(_amountBUSD, evaluatePath);
         return (amounts[1], amounts[2]);
     }
 
@@ -63,23 +63,34 @@ contract PureFiTokenBuyerBSC is OwnableUpgradeable, ITokenBuyer {
         _beforeBuy(msg.sender, _to, msg.value);
 
         address[] memory path = new address[](2);
-        path[0] = IPancakeRouter01(routerAddress()).WETH();
+        path[0] = IUniswapV2Router01(routerAddress()).WETH();
         path[1] = targetTokenAddress;
-        (IPancakeRouter01(routerAddress())).swapExactETHForTokens{value: msg.value}(_amountToken, path, _to, block.timestamp);
-    }  
+        (IUniswapV2Router01(routerAddress())).swapExactETHForTokens{value: msg.value}(_amountToken, path, _to, block.timestamp);
+    } 
 
     // returns sorted token addresses, used to handle return values from pairs sorted in this order
     function sortTokens(address tokenA, address tokenB) internal pure returns (address token0, address token1) {
-        require(tokenA != tokenB, 'PancakeLibrary: IDENTICAL_ADDRESSES');
+        require(tokenA != tokenB, 'UniswapV2Library: IDENTICAL_ADDRESSES');
         (token0, token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
-        require(token0 != address(0), 'PancakeLibrary: ZERO_ADDRESS');
+        require(token0 != address(0), 'UniswapV2Library: ZERO_ADDRESS');
+    }
+
+    // calculates the CREATE2 address for a pair without making any external calls
+    function pairFor(address factory, address tokenA, address tokenB) internal pure returns (address pair) {
+        (address token0, address token1) = sortTokens(tokenA, tokenB);
+        pair = address(uint160(uint256(keccak256(abi.encodePacked(
+                hex'ff',
+                factory,
+                keccak256(abi.encodePacked(token0, token1)),
+                hex'96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f' // init code hash
+            )))));
     }
 
     function _buy(address _to) internal returns (uint256){
         _beforeBuy(msg.sender, _to, msg.value);
 
-        IPancakeRouter01 router = IPancakeRouter01(routerAddress());
-        address wethAddress = IPancakeRouter01(routerAddress()).WETH();
+        IUniswapV2Router01 router = IUniswapV2Router01(routerAddress());
+        address wethAddress = IUniswapV2Router01(routerAddress()).WETH();
 
          
         address[] memory path = new address[](2);
@@ -87,16 +98,17 @@ contract PureFiTokenBuyerBSC is OwnableUpgradeable, ITokenBuyer {
         path[1] = targetTokenAddress;
 
         (address token0, address token1) = sortTokens(wethAddress, targetTokenAddress);
+
         address pairAddress = address(uint160(uint256(keccak256(abi.encodePacked(
                 hex'ff',
                 router.factory(),
                 keccak256(abi.encodePacked(token0, token1)),
-                hex'00fb7f630766e6a796048ea87d01acd3068e8ff67d078148a3fa3f4a84f69bd5' // init code hash
+                hex'96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f' // init code hash
             )))));
 
         uint256 ufiExpected;
         {
-            (uint112 reserve0, uint112 reserve1, ) = IPancakePair(pairAddress).getReserves();
+            (uint112 reserve0, uint112 reserve1, ) = IUniswapV2Pair(pairAddress).getReserves();
             ufiExpected = token0 == wethAddress ? router.getAmountOut(msg.value, reserve0, reserve1) : router.getAmountOut(msg.value, reserve1, reserve0);
         }
         

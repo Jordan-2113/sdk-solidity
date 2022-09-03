@@ -26,10 +26,10 @@ contract PureFiVerifier is PausableUpgradeable, OwnableUpgradeable, ParamStorage
   uint16 private constant PARAM_ISSUER_REGISTRY_ADDRESS = 7;
   uint16 private constant PARAM_WHITELIST_ADDRESS = 8;
 
-  function initialize(address _issuer, address _whitelist) public initializer{
+  function initialize(address _issuerRegistry, address _whitelist) public initializer{
     __Ownable_init();
     __Pausable_init_unchained();
-    addressParams[PARAM_ISSUER_REGISTRY_ADDRESS] = _issuer;
+    addressParams[PARAM_ISSUER_REGISTRY_ADDRESS] = _issuerRegistry;
     addressParams[PARAM_WHITELIST_ADDRESS] = _whitelist;
   }
 
