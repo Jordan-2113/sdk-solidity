@@ -16,7 +16,7 @@ contract PureFiTokenBuyerETH is OwnableUpgradeable, ITokenBuyer {
 
     function initialize() public initializer{
         __Ownable_init();
-        __tokenBuyer_init_unchained(100);
+        __tokenBuyer_init_unchained(1000);//10%
     }
 
     function __tokenBuyer_init_unchained(uint16 _slippage) internal initializer{
@@ -49,13 +49,15 @@ contract PureFiTokenBuyerETH is OwnableUpgradeable, ITokenBuyer {
         }
     }
 
-    function busdToUFI(uint256 _amountBUSD) external override view returns (uint256,uint256) { //returns (amount WBNB, amount UFI)
+    function busdToUFI(uint256 _amountUSD) external override view returns (uint256,uint256) { //returns (amount WETH, amount UFI)
+        //_amountUSD comes with 18 decimals to be compatible with implementations for other networks
+        _amountUSD/=1e12; //converting to 6 decimals USDC standard in Ethereum
         address[] memory evaluatePath = new address[](3);
         evaluatePath[0]=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48; //USDC
         evaluatePath[1]=IUniswapV2Router01(routerAddress()).WETH(); //WETH
         evaluatePath[2]=targetTokenAddress;//UFI
 
-        uint[] memory amounts = IUniswapV2Router01(routerAddress()).getAmountsOut(_amountBUSD, evaluatePath);
+        uint[] memory amounts = IUniswapV2Router01(routerAddress()).getAmountsOut(_amountUSD, evaluatePath);
         return (amounts[1], amounts[2]);
     }
 

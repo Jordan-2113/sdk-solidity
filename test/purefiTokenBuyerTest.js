@@ -8,8 +8,20 @@ const assert = chai.assert;
 // chai.use(require('bn-chai')(BN));
 // chai.use(require('chai-match'));
 
-const PureFiToken = artifacts.require('PureFiToken');
-const PureFITokenBuyer = artifacts.require('PureFITokenBuyer');
+const PureFiRouter = artifacts.require('PureFiRouter');
+const PureFiVerifier = artifacts.require('PureFiVerifier');
+const PureFiIssuerRegistry = artifacts.require('PureFiIssuerRegistry');
+const PureFiWhitelist = artifacts.require('PureFiWhitelist');
+const PProxyAdmin = artifacts.require('PProxyAdmin');
+const PProxy = artifacts.require('PProxy');
+const TestBotProtection = artifacts.require('TestBotProtection');
+const PureFiLockService = artifacts.require('PureFiLockService');
+const PureFiSubscriptionService = artifacts.require('PureFiSubscriptionService');
+const PureFiTokenBuyerBSC = artifacts.require('PureFiTokenBuyerBSC');
+const PureFiTokenBuyerETH = artifacts.require('PureFiTokenBuyerETH');
+const UFIBuyerCustomAMLCheck = artifacts.require('UFIBuyerCustomAMLCheck');
+const UFIBuyerDefaultAMLCheck = artifacts.require('UFIBuyerDefaultAMLCheck');
+const TestToken = artifacts.require('TestToken');
 
 function toBN(number) {
     return web3.utils.toBN(number);
@@ -29,7 +41,7 @@ function printEvents(txResult, strdata){
 }
 
 
-contract('PureFi Pancake buy token test', (accounts) => {
+contract('PureFi buy token test', (accounts) => {
  
     let admin   = accounts[0];
     const decimals = toBN(10).pow(toBN(18));
@@ -43,13 +55,21 @@ contract('PureFi Pancake buy token test', (accounts) => {
     // const startDate = 1627383600; // Jul 27 11:00 UTC
     const startDate = Math.round((new Date().getTime())/1000)+10;
 
+    const mode = "ETH";
+
 
     before(async () => {
-        PureFITokenBuyer
 
-        await PureFITokenBuyer.new().then(instance => tokenBuyer = instance);
-        pureFiToken = await PureFiToken.at('0xe2a59D5E33c6540E18aAA46BF98917aC3158Db0D');
+        if(mode == 'ETH'){
+            await PureFiTokenBuyerETH.new().then(instance => tokenBuyer = instance);
+            pureFiToken = await TestToken.at('0xcDa4e840411C00a614aD9205CAEC807c7458a0E3');
+        } 
+        if (mode == 'BSC'){
+            await PureFiTokenBuyerBSC.new().then(instance => tokenBuyer = instance);
+            pureFiToken = await TestToken.at('0xe2a59D5E33c6540E18aAA46BF98917aC3158Db0D');
+        }
 
+        await tokenBuyer.initialize.sendTransaction();
         
     });
 
@@ -57,22 +77,22 @@ contract('PureFi Pancake buy token test', (accounts) => {
         let balanceToken = await pureFiToken.balanceOf.call(admin);
         console.log("balanceToken",balanceToken.div(decimals).toString());
 
-        let toBuyBnb = toBN(1).mul(decimals);
+        let toBuyBnb = toBN(1).mul(decimals).div(toBN(1000));
         
-        let sendReceipt = await web3.eth.sendTransaction({
-            from: admin,
-            to: tokenBuyer.address, 
-            value: toBuyBnb
-          });
+        // let sendReceipt = await web3.eth.sendTransaction({
+        //     from: admin,
+        //     to: tokenBuyer.address, 
+        //     value: toBuyBnb
+        //   });
 
-          printEvents(sendReceipt,"buy");
+        let sendReceipt = await tokenBuyer.buyFor.sendTransaction(admin, {value: toBuyBnb, from: admin});
+
+        printEvents(sendReceipt,"buy");
         let balanceToken2 = await pureFiToken.balanceOf.call(admin);
 
         console.log("Bought ",balanceToken2.sub(balanceToken).div(decimals).toString());
 
     });
 
-   
-    
    
 });

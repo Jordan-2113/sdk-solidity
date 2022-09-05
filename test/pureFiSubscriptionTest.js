@@ -20,6 +20,7 @@ const TestBotProtection = artifacts.require('TestBotProtection');
 const PureFiLockService = artifacts.require('PureFiLockService');
 const PureFiSubscriptionService = artifacts.require('PureFiSubscriptionService');
 const PureFiTokenBuyerBSC = artifacts.require('PureFiTokenBuyerBSC');
+const PureFiTokenBuyerETH = artifacts.require('PureFiTokenBuyerETH');
 const TestToken = artifacts.require('TestToken');
 
 function toBN(number) {
@@ -75,7 +76,7 @@ contract('PureFi Subscription Test', (accounts) => {
     let subscriptionContract;
     let burnAddress;
     let tokenBuyer;
-
+    let readlUFIAddress;
 
     before(async () => {
         burnAddress = accounts[9];
@@ -88,7 +89,16 @@ contract('PureFi Subscription Test', (accounts) => {
         // await TestBotProtection.new(pureFiToken.address, lockContract.address).then(instance => botProtector = instance); 
         // await pureFiToken.setBotProtector.sendTransaction(botProtector.address);
         
-        await PureFiTokenBuyerBSC.new().then(instance => tokenBuyer = instance); 
+        //BSC Fork 
+        // await PureFiTokenBuyerBSC.new().then(instance => tokenBuyer = instance); 
+        // readlUFIAddress = '0xe2a59D5E33c6540E18aAA46BF98917aC3158Db0D';
+        
+        //ETH Fork
+        await PureFiTokenBuyerETH.new().then(instance => tokenBuyer = instance); 
+        readlUFIAddress = '0xcDa4e840411C00a614aD9205CAEC807c7458a0E3';
+
+        await tokenBuyer.initialize.sendTransaction();
+
         await PureFiSubscriptionService.new().then(instance => subscriptionContract = instance); 
 
         // address _admin, address _ufi, address _lock, address _tokenBuyer, address _burnAddress
@@ -211,7 +221,7 @@ contract('PureFi Subscription Test', (accounts) => {
         }
         {
             //real UFI check
-            let realUFIToken = await TestToken.at('0xe2a59D5E33c6540E18aAA46BF98917aC3158Db0D');
+            let realUFIToken = await TestToken.at(readlUFIAddress);
             let balanceUFI = await realUFIToken.balanceOf.call(buyer);
             console.log("AFTER: REAL UFI Balance: ",balanceUFI.toString());
         }
@@ -303,7 +313,7 @@ contract('PureFi Subscription Test', (accounts) => {
         }
         {
             //real UFI check
-            let realUFIToken = await TestToken.at('0xe2a59D5E33c6540E18aAA46BF98917aC3158Db0D');
+            let realUFIToken = await TestToken.at(readlUFIAddress);
             let balanceUFI = await realUFIToken.balanceOf.call(buyer);
             console.log("AFTER: REAL UFI Balance: ",balanceUFI.toString());
         }
