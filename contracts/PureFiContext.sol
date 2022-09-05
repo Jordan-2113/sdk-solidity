@@ -31,7 +31,9 @@ abstract contract PureFiContext is Initializable{
     }
 
     modifier requiresOnChainKYC(address user){
-        (_txLocalCheckResult, _txLocalCheckReason) = pureFiVerifier.defaultKYCCheck(user);
+        uint256[] memory data = new uint256[](4);
+        bytes memory signature;
+        (_txLocalCheckResult, _txLocalCheckReason) = pureFiVerifier.defaultKYCCheck(user, data, signature);
         require(_txLocalCheckResult == _VERIFICATION_SUCCESS, _txLocalCheckReason);
         //here the smart contract can decide whether to fail a transaction in case of check failed
 
@@ -50,7 +52,7 @@ abstract contract PureFiContext is Initializable{
             _txLocalCheckResult = _VERIFICATION_SUCCESS;
         } else {
             if(rule == DefaultRule.KYC){
-                (_txLocalCheckResult, _txLocalCheckReason) = pureFiVerifier.defaultKYCCheck(expectedFundsSender);
+                (_txLocalCheckResult, _txLocalCheckReason) = pureFiVerifier.defaultKYCCheck(expectedFundsSender, data, signature);
             } else if (rule == DefaultRule.AML){
                 (_txLocalCheckResult, _txLocalCheckReason) = pureFiVerifier.defaultAMLCheck(expectedFundsSender, data, signature);
             } else if (rule == DefaultRule.KYCAML){

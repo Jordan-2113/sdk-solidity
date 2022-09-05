@@ -15,7 +15,11 @@ contract UFIBuyerBSCWithCheck is PureFiTokenBuyerBSC, PureFiContext{
 
      function version() public pure returns(uint32){
         // 000.000.000 - Major.minor.internal
-        return 2000000;
+        return 2000002;
+    }
+
+    function setVerifier(address _verifier) external onlyOwner{
+        pureFiVerifier = PureFiVerifier(_verifier);
     }
 
     /**

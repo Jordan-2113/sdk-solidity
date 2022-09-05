@@ -18,7 +18,7 @@ contract UFIBuyerBSCWithCustomCheck is PureFiTokenBuyerBSC, PureFiContext{
 
     function version() public pure returns(uint32){
         // 000.000.000 - Major.minor.internal
-        return 2000000;
+        return 2000001;
     }
 
     function setRuleID(uint256 _newRuleID) public onlyOwner {

@@ -10,7 +10,7 @@ import "./PureFiIssuerRegistry.sol";
 import "./utils/ParamStorage.sol";
 
 
-contract PureFiVerifier is PausableUpgradeable, OwnableUpgradeable, ParamStorage, SignLib{
+contract PureFiVerifier is OwnableUpgradeable, ParamStorage, SignLib{
 
   uint16 private constant ERROR_ISSUER_SIGNATURE_INVALID = 1;
   uint16 private constant ERROR_FUNDS_SENDER_DOESNT_MATCH_ADDRESS_VERIFIED = 2;
@@ -28,7 +28,6 @@ contract PureFiVerifier is PausableUpgradeable, OwnableUpgradeable, ParamStorage
 
   function initialize(address _issuerRegistry, address _whitelist) public initializer{
     __Ownable_init();
-    __Pausable_init_unchained();
     addressParams[PARAM_ISSUER_REGISTRY_ADDRESS] = _issuerRegistry;
     addressParams[PARAM_WHITELIST_ADDRESS] = _whitelist;
   }
@@ -39,7 +38,7 @@ contract PureFiVerifier is PausableUpgradeable, OwnableUpgradeable, ParamStorage
    */
   function version() public pure returns(uint32){
     // 000.000.000 - Major.minor.internal
-    return 2000000;
+    return 2000002;
   }
 
   /**
@@ -77,8 +76,14 @@ contract PureFiVerifier is PausableUpgradeable, OwnableUpgradeable, ParamStorage
   Params:
   @param expectedFundsSender - an address sending funds (can't be automatically determined here, so has to be provided by the caller)
   */
-  function defaultKYCCheck(address expectedFundsSender) external view returns (uint16, string memory){
-    return _verifyAgainstRule_W(expectedFundsSender, uintParams[PARAM_DEFAULT_KYC_RULE]);
+  function defaultKYCCheck(address expectedFundsSender, uint256[] memory data, bytes memory signature) external view returns (uint16, string memory){
+    if(data.length == 4 && data[0] > 0) {
+      //attempt IM check if data is filled
+      return _verifyAgainstRule_IM(expectedFundsSender, uintParams[PARAM_DEFAULT_KYC_RULE], data, signature); 
+    } else {
+      //try with W check when data is empty.
+      return _verifyAgainstRule_W(expectedFundsSender, uintParams[PARAM_DEFAULT_KYC_RULE]);
+    }
   }
 
   /**
@@ -114,7 +119,7 @@ contract PureFiVerifier is PausableUpgradeable, OwnableUpgradeable, ParamStorage
   }
 
   /**
-  performs verification against the rule specified in Interactive mode
+  performs verification against the rule specified in combined mode. Attempts Interactive mode if data is filled, then Whitelist mode.
   Params:
   @param expectedFundsSender - an address sending funds (can't be automatically determined here, so has to be provided by the caller)
   @param expectedRuleID - a Rule identifier expected by caller
@@ -126,7 +131,39 @@ contract PureFiVerifier is PausableUpgradeable, OwnableUpgradeable, ParamStorage
   @param signature - Off-chain issuer signature
   */
   function verifyAgainstRule(address expectedFundsSender, uint256 expectedRuleID, uint256[] memory data, bytes memory signature) external view returns (uint16, string memory){
+    if(data.length == 4 && data[0] > 0) {
+      //attempt IM check if data is filled
+      return _verifyAgainstRule_IM(expectedFundsSender, expectedRuleID, data, signature); 
+    } else {
+      //try with W check when data is empty.
+      return _verifyAgainstRule_W(expectedFundsSender, expectedRuleID);
+    }
+  }
+
+  /**
+  performs verification against the rule specified in Interactive mode
+  Params:
+  @param expectedFundsSender - an address sending funds (can't be automatically determined here, so has to be provided by the caller)
+  @param expectedRuleID - a Rule identifier expected by caller
+  @param data - signed data package from the off-chain verifier
+    data[0] - verification session ID
+    data[1] - circuit ID (if required)
+    data[2] - verification timestamp
+    data[3] - verified wallet - to be the same as msg.sender
+  @param signature - Off-chain issuer signature
+  */
+  function verifyAgainstRuleIM(address expectedFundsSender, uint256 expectedRuleID, uint256[] memory data, bytes memory signature) external view returns (uint16, string memory){
     return _verifyAgainstRule_IM(expectedFundsSender, expectedRuleID, data, signature);
+  }
+
+  /**
+  performs verification against the rule specified in Whitelist mode
+  Params:
+  @param expectedFundsSender - an address sending funds (can't be automatically determined here, so has to be provided by the caller)
+  @param expectedRuleID - a Rule identifier expected by caller
+  */
+  function verifyAgainstRuleW(address expectedFundsSender, uint256 expectedRuleID) external view returns (uint16, string memory){
+    return _verifyAgainstRule_W(expectedFundsSender, expectedRuleID);
   }
 
   //************* PRIVATE FUNCTIONS ****************** */
