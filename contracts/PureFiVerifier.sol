@@ -38,7 +38,7 @@ contract PureFiVerifier is OwnableUpgradeable, ParamStorage, SignLib{
    */
   function version() public pure returns(uint32){
     // 000.000.000 - Major.minor.internal
-    return 2000002;
+    return 2000003;
   }
 
   /**
@@ -101,10 +101,10 @@ contract PureFiVerifier is OwnableUpgradeable, ParamStorage, SignLib{
     if(data.length !=4){
       return _fail(ERROR_DATA_PACKAGE_INVALID);
     }
-    if(data[1] != uintParams[PARAM_DEFAULT_KYCAML_RULE]){
+    if(data[1] == uintParams[PARAM_DEFAULT_KYCAML_RULE]){
       //attempt interactive KYC+AML rule check
       return _verifyAgainstRule_IM(expectedFundsSender, uintParams[PARAM_DEFAULT_KYCAML_RULE], data, signature);
-    } else if(data[1] != uintParams[PARAM_DEFAULT_AML_RULE]){
+    } else if(data[1] == uintParams[PARAM_DEFAULT_AML_RULE]){
       //attempt separate KYC/whitelist and AML/Interactive check;
       (uint16 _kycCode, string memory _message) = _verifyAgainstRule_W(expectedFundsSender, uintParams[PARAM_DEFAULT_KYC_RULE]);
       if(_kycCode > 0 ){
