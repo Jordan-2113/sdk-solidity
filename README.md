@@ -16,10 +16,14 @@ Live Demo is available for both Ethereum and Binance Chain and is built upon the
  * [UFIBuyerETHWithCheck](./contracts/examples/ex02-filtered_tokenbuyer/UFIBuyerETHWithCheck.sol)
 ## On-chain infrastructure:
 ### Ethereum mainnet
+| Contract name | contract address |
+| ----------- | ----------- |
 | PureFi Token | 0xcDa4e840411C00a614aD9205CAEC807c7458a0E3 |
 | PureFi Verifier | 0x714Ca4B117558a043c41f7225b12cB53eF80416e |
 | PureFi Subscription | 0xbA5B61DFa9c182E202354F66Cb7f8400484d7071 |
 ### Binance Chain
+| Contract name | contract address |
+| ----------- | ----------- 
 | PureFi Token | 0xe2a59D5E33c6540E18aAA46BF98917aC3158Db0D |
 | PureFi Verifier | 0x3346cc4b6F44349EAC447b1C8392b2a472a20F27 |
 | PureFi Subscription | 0xBbC3Df0Af62b4a469DD44c1bc4e8804268dB1ea3 |
