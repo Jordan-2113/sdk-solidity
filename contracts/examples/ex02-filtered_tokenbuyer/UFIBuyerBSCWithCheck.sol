@@ -19,7 +19,7 @@ contract UFIBuyerBSCWithCheck is PureFiTokenBuyerBSC, PureFiContext{
     }
 
     function setVerifier(address _verifier) external onlyOwner{
-        pureFiVerifier = PureFiVerifier(_verifier);
+        pureFiVerifier = IPureFiVerifier(_verifier);
     }
 
     /**

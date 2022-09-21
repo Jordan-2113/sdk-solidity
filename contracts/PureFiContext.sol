@@ -3,7 +3,7 @@
 pragma solidity ^0.8.0;
 
 import "../openzeppelin-contracts-upgradeable-master/contracts/proxy/utils/Initializable.sol";
-import "./PureFiVerifier.sol";
+import "./interfaces/IPureFiVerifier.sol";
 
 abstract contract PureFiContext is Initializable{
 
@@ -17,12 +17,12 @@ abstract contract PureFiContext is Initializable{
     uint256 private _txLocalCheckResult; //similar to re-entrancy guard status or ThreadLocal in Java
     string private _txLocalCheckReason; //similar to re-entrancy guard status or ThreadLocal in Java
     
-    PureFiVerifier internal pureFiVerifier;
+    IPureFiVerifier internal pureFiVerifier;
 
     function __PureFiContext_init_unchained(address _pureFiVerifier) internal initializer{
         _txLocalCheckResult = _NOT_VERIFIED;
         _txLocalCheckReason = _NOT_VERIFIED_REASON;
-        pureFiVerifier = PureFiVerifier(_pureFiVerifier);
+        pureFiVerifier = IPureFiVerifier(_pureFiVerifier);
     }
 
     modifier rejectUnverified() {
