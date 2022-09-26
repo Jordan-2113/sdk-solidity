@@ -147,7 +147,7 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
         ufiToken.safeTransfer(msg.sender, userSubscriptions[msg.sender].tokensDeposited - actualProfit);
         removeUser(userSubscriptions[msg.sender].dateSubscribed, totalProfit);
         // remove the part of the lastProfitToDate that belongs to this user
-        if(lastProfitToDate > 0)
+        if(lastProfitToDate > userSubscriptions[msg.sender].dateSubscribed)
             lastProfitToDate -= alreadyCollectedProfit;
         delete userSubscriptions[msg.sender];
         emit Unsubscribed(msg.sender, userSubscriptionTier, uint64(block.timestamp), actualProfit);
@@ -317,7 +317,7 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
             }
 
             tokensLeftFromCurrentSubscription = userSubscriptions[_subscriber].tokensDeposited - actualProfit;
-            if(lastProfitToDate > 0)
+            if(lastProfitToDate > userSubscriptions[_subscriber].dateSubscribed)
                 lastProfitToDate -= alreadyCollectedProfit;
             removeUser(userSubscriptions[_subscriber].dateSubscribed, totalProfit);
             delete userSubscriptions[_subscriber];
