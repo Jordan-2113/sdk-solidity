@@ -5,6 +5,9 @@ import "../openzeppelin-contracts-upgradeable-master/contracts/token/ERC20/IERC2
 import "../openzeppelin-contracts-upgradeable-master/contracts/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import "./tokenbuyer/ITokenBuyer.sol";
 
+interface IProfitDistributor{
+    function distributeProfit(uint256 amountTokens) external;
+}
 
 contract PureFiSubscriptionService is AccessControlUpgradeable {
 
@@ -12,6 +15,7 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
 
     uint256 private constant P100 = 100; //100% denominator
     uint256 private constant MONTH = 30*24*60*60; //30 days in seconds
+    uint256 private constant YEAR = 12 * MONTH; 
  
     IERC20Upgradeable private ufiToken;
     ITokenBuyer private tokenBuyer;
@@ -26,6 +30,13 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
     
     mapping (uint8 => Tier) tiers;
     mapping (address => UserSubscription) userSubscriptions;
+    //2000004
+    uint256 private unrealizedProfit; //profit gained when unsubscribe triggered that is not immediately distributed
+    uint256 private lastProfitToDate; 
+    uint64 private lastProfitDistributedTimestamp;// last profit distribution date
+    uint8 private profitDistributionPart;//percents / P100
+    uint24 private profitDistributionInterval;//seconds
+    address private profitDistributionAddress; // distributor contract address
 
     struct Tier{
         uint8 isactive; //1 - active, 0 - non acvite (can't subscribe)
@@ -45,6 +56,7 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
 
     event Subscribed(address indexed subscriber, uint8 tier, uint64 dateSubscribed, uint256 UFILocked);
     event Unsubscribed(address indexed subscriber, uint8 tier, uint64 dateUnsubscribed, uint256 ufiBurned);
+    event ProfitDistributed(address indexed profitCollector, uint256 amount);
 
     /**
     Changelog:
@@ -55,7 +67,7 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
     */
     function version() public pure returns(uint32){
         // 000.000.000 - Major.minor.internal
-        return 2000002;
+        return 2000004;
     }
 
     function initialize(address _admin, address _ufi, address _tokenBuyer, address _profitCollectionAddress) public initializer{
@@ -75,6 +87,14 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
         profitCollectionAddress = _profitCollectionAddress;
     }
 
+    function setProfitDistributionParams(address _profitDistributionContract, uint8 _part, uint24 _interval) external onlyRole(DEFAULT_ADMIN_ROLE){
+        require(_part <= P100,"Incorrect _part param");
+        require(_interval <= MONTH, "Max distribution interval is 1 month");
+        profitDistributionPart = _part;
+        profitDistributionAddress = _profitDistributionContract;
+        profitDistributionInterval = _interval;
+    }
+
     function setTierData(
         uint8 _tierID,
         uint48 _subscriptionDuration, //subscriptionDuration = token lockup time in seconds.
@@ -88,6 +108,16 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
     function setTierIsActive(uint8 _tierID, uint8 _isActive) external onlyRole(DEFAULT_ADMIN_ROLE){
         tiers[_tierID].isactive = _isActive;
     }
+
+    function distributeProfit() external {
+        uint256 totalTokensToDistribute = _collectProfit();
+        uint256 tokensToDistribute = totalTokensToDistribute * profitDistributionPart / P100;
+        ufiToken.approve(profitDistributionAddress, tokensToDistribute);
+        ufiToken.transfer(profitCollectionAddress, totalTokensToDistribute - tokensToDistribute);
+        emit ProfitDistributed(profitCollectionAddress, totalTokensToDistribute - tokensToDistribute);
+        emit ProfitDistributed(profitDistributionAddress, tokensToDistribute);
+        IProfitDistributor(profitDistributionAddress).distributeProfit(tokensToDistribute);
+    } 
 
     function subscribe(uint8 _tier) external payable {
        _subscribe(_tier, msg.sender);
@@ -106,15 +136,21 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
         // for expired subscriptions set subscribed time to initial tier duration.
         if (timeSubscribed > tiers[userSubscriptionTier].subscriptionDuration)
             timeSubscribed = tiers[userSubscriptionTier].subscriptionDuration;
-        uint256 profit = userSubscriptions[msg.sender].tokensDeposited * timeSubscribed * tiers[userSubscriptionTier].burnRatePercent / (tiers[userSubscriptionTier].subscriptionDuration * P100); 
 
-        if(profit > 0){
-            ufiToken.safeTransfer(profitCollectionAddress, profit);
+        uint256 totalProfit =  userSubscriptions[msg.sender].tokensDeposited * tiers[userSubscriptionTier].burnRatePercent / P100;
+        uint256 actualProfit = totalProfit * timeSubscribed  / tiers[userSubscriptionTier].subscriptionDuration; 
+        uint256 alreadyCollectedProfit = (lastProfitDistributedTimestamp > 0) ? (totalProfit * (lastProfitDistributedTimestamp - userSubscriptions[msg.sender].dateSubscribed) / YEAR) : 0;        
+
+        if(actualProfit > alreadyCollectedProfit){
+            unrealizedProfit += actualProfit - alreadyCollectedProfit;
         }
-        ufiToken.safeTransfer(msg.sender, userSubscriptions[msg.sender].tokensDeposited - profit);
-        removeUser(userSubscriptions[msg.sender].dateSubscribed, userSubscriptions[msg.sender].tokensDeposited);
+        ufiToken.safeTransfer(msg.sender, userSubscriptions[msg.sender].tokensDeposited - actualProfit);
+        removeUser(userSubscriptions[msg.sender].dateSubscribed, totalProfit);
+        // remove the part of the lastProfitToDate that belongs to this user
+        if(lastProfitToDate > 0)
+            lastProfitToDate -= alreadyCollectedProfit;
         delete userSubscriptions[msg.sender];
-        emit Unsubscribed(msg.sender, userSubscriptionTier, uint64(block.timestamp), profit);
+        emit Unsubscribed(msg.sender, userSubscriptionTier, uint64(block.timestamp), actualProfit);
     }
 
     /**
@@ -200,6 +236,18 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
                 );
     }
 
+    function getProfitDistributionData() external view returns (address, address, uint8, uint24){
+        return (profitCollectionAddress, profitDistributionAddress, profitDistributionPart, profitDistributionInterval);
+    }
+
+    function getProfitCalculationDetails() external view returns(uint256, uint256, uint256, uint64){
+        return (_estimateProfit(), unrealizedProfit, lastProfitToDate, lastProfitDistributedTimestamp);
+    }
+
+    function estimateProfit() external view returns(uint256){
+        return _estimateProfit();
+    }
+
     function getUserStat() external view returns(uint256, uint256, uint256) {
         uint256 usersAmount = (userstat >> 224) & 0x00000000000000000000000000000000000000000000000000000000FFFFFFFF; //32
         uint256 sDepi =       (userstat >> 128) & 0x0000000000000000000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF; //96
@@ -259,14 +307,21 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
             // for expired subscriptions set subscribed time to initial tier duration.
             if (timeSubscribed > tiers[userCurrentSubscriptionTier].subscriptionDuration)
                 timeSubscribed = tiers[userCurrentSubscriptionTier].subscriptionDuration;
-            uint256 unrealizedProfitFromCurrentSubscription = userSubscriptions[_subscriber].tokensDeposited * timeSubscribed * tiers[userCurrentSubscriptionTier].burnRatePercent / (tiers[userCurrentSubscriptionTier].subscriptionDuration * P100); 
-            if(unrealizedProfitFromCurrentSubscription > 0){
-                ufiToken.safeTransfer(profitCollectionAddress, unrealizedProfitFromCurrentSubscription);
+            // uint256 unrealizedProfitFromCurrentSubscription = userSubscriptions[_subscriber].tokensDeposited * timeSubscribed * tiers[userCurrentSubscriptionTier].burnRatePercent / (tiers[userCurrentSubscriptionTier].subscriptionDuration * P100); 
+            uint256 totalProfit =  userSubscriptions[_subscriber].tokensDeposited * tiers[userCurrentSubscriptionTier].burnRatePercent / P100;
+            uint256 actualProfit = totalProfit * timeSubscribed  / tiers[userCurrentSubscriptionTier].subscriptionDuration; 
+            uint256 alreadyCollectedProfit = (lastProfitDistributedTimestamp > 0) ? (totalProfit * (lastProfitDistributedTimestamp - userSubscriptions[_subscriber].dateSubscribed) / YEAR) : 0;        
+
+            if(actualProfit > alreadyCollectedProfit){
+                unrealizedProfit += actualProfit - alreadyCollectedProfit;
             }
-            tokensLeftFromCurrentSubscription = userSubscriptions[_subscriber].tokensDeposited - unrealizedProfitFromCurrentSubscription;
-            emit Unsubscribed(_subscriber, userCurrentSubscriptionTier, uint64(block.timestamp), unrealizedProfitFromCurrentSubscription);
-            removeUser(userSubscriptions[_subscriber].dateSubscribed, userSubscriptions[_subscriber].tokensDeposited);
+
+            tokensLeftFromCurrentSubscription = userSubscriptions[_subscriber].tokensDeposited - actualProfit;
+            if(lastProfitToDate > 0)
+                lastProfitToDate -= alreadyCollectedProfit;
+            removeUser(userSubscriptions[_subscriber].dateSubscribed, totalProfit);
             delete userSubscriptions[_subscriber];
+            emit Unsubscribed(_subscriber, userCurrentSubscriptionTier, uint64(block.timestamp), actualProfit);
         }
         //subscripbe to the _tier
         (uint newSubscriptionPriceInWBNB, uint256 newSubscriptionPriceInUFI) = tokenBuyer.busdToUFI(tiers[_tier].priceInUSD);
@@ -301,10 +356,35 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
         
         userSubscriptions[_subscriber] = UserSubscription(_tier, uint64(block.timestamp), uint128(newSubscriptionPriceInUFI), 0);
         emit Subscribed(_subscriber, _tier, uint64(block.timestamp), newSubscriptionPriceInUFI);
-        addUser(block.timestamp, newSubscriptionPriceInUFI);
+        addUser(block.timestamp, newSubscriptionPriceInUFI * tiers[_tier].burnRatePercent / P100);
         if(ethRemaining > 0){
             payable(msg.sender).transfer(ethRemaining);
         }
+    }
+
+    function _collectProfit() private returns (uint256){
+        require(block.timestamp >= lastProfitDistributedTimestamp + profitDistributionInterval, "Can't distribute profit until distribution interval ends");
+
+        uint256 usersAmount = (userstat >> 224) & 0x00000000000000000000000000000000000000000000000000000000FFFFFFFF; //32
+        uint256 sDepi =       (userstat >> 128) & 0x0000000000000000000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF; //96
+        uint256 sTiDepi =     (userstat)        & 0x00000000000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF; //128
+        uint256 dateToProfit = (block.timestamp * usersAmount * sDepi - sTiDepi) / YEAR;
+
+        uint256 lastProfit = lastProfitToDate;
+        uint256 unrealized = unrealizedProfit;
+        lastProfitDistributedTimestamp = uint64(block.timestamp);
+        lastProfitToDate = dateToProfit;
+        unrealizedProfit = 0;
+        return dateToProfit - lastProfit + unrealized;
+    }
+
+    function _estimateProfit() private view returns (uint256){
+        uint256 usersAmount = (userstat >> 224) & 0x00000000000000000000000000000000000000000000000000000000FFFFFFFF; //32
+        uint256 sDepi =       (userstat >> 128) & 0x0000000000000000000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF; //96
+        uint256 sTiDepi =     (userstat)        & 0x00000000000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF; //128
+        uint256 dateToProfit = (block.timestamp * usersAmount * sDepi - sTiDepi) / YEAR;
+        
+        return dateToProfit - lastProfitToDate + unrealizedProfit;
     }
     
 
