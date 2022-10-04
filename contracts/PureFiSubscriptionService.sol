@@ -64,10 +64,13 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
     1. fixed issue with getUserData();
     1000002 -> 1000003
     1. changed subscription time calculation to round up to nearest month. I.e. minimum subscription time = 1 month;
+    2000004 -> 2000005
+    1. fix using busdToUfi function
+    2. fix formula in _collectProfit(), _estimateProfit
     */
     function version() public pure returns(uint32){
         // 000.000.000 - Major.minor.internal
-        return 2000004;
+        return 2000005;
     }
 
     function initialize(address _admin, address _ufi, address _tokenBuyer, address _profitCollectionAddress) public initializer{
@@ -178,7 +181,7 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
             tokensLeftFromCurrentSubscription = userSubscriptions[_holder].tokensDeposited - unrealizedProfitFromCurrentSubscription;
         }
         //subscripbe to the _tier
-        (uint newSubscriptionPriceInWBNB, uint256 newSubscriptionPriceInUFI) = tokenBuyer.busdToUFI(tiers[_tier].priceInUSD);
+        (uint newSubscriptionPriceInWBNB, uint256 newSubscriptionPriceInUFI) = tokenBuyer.busdToUFI(tiers[_tier].priceInUSD * 10**18); // multiple by 10^18
         uint256 userBalanceUFI = ufiToken.balanceOf(_holder);
 
 
@@ -324,7 +327,7 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
             emit Unsubscribed(_subscriber, userCurrentSubscriptionTier, uint64(block.timestamp), actualProfit);
         }
         //subscripbe to the _tier
-        (uint newSubscriptionPriceInWBNB, uint256 newSubscriptionPriceInUFI) = tokenBuyer.busdToUFI(tiers[_tier].priceInUSD);
+        (uint newSubscriptionPriceInWBNB, uint256 newSubscriptionPriceInUFI) = tokenBuyer.busdToUFI(tiers[_tier].priceInUSD * 10**18); // multiply by 10^18
         uint256 userBalanceUFI = ufiToken.balanceOf(_subscriber);
         uint256 ethRemaining = msg.value;
         if(tokensLeftFromCurrentSubscription >= newSubscriptionPriceInUFI){
@@ -368,7 +371,7 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
         uint256 usersAmount = (userstat >> 224) & 0x00000000000000000000000000000000000000000000000000000000FFFFFFFF; //32
         uint256 sDepi =       (userstat >> 128) & 0x0000000000000000000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF; //96
         uint256 sTiDepi =     (userstat)        & 0x00000000000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF; //128
-        uint256 dateToProfit = (block.timestamp * usersAmount * sDepi - sTiDepi) / YEAR;
+        uint256 dateToProfit = (block.timestamp * sDepi - sTiDepi) / YEAR;
 
         uint256 lastProfit = lastProfitToDate;
         uint256 unrealized = unrealizedProfit;
@@ -382,8 +385,7 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
         uint256 usersAmount = (userstat >> 224) & 0x00000000000000000000000000000000000000000000000000000000FFFFFFFF; //32
         uint256 sDepi =       (userstat >> 128) & 0x0000000000000000000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF; //96
         uint256 sTiDepi =     (userstat)        & 0x00000000000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF; //128
-        uint256 dateToProfit = (block.timestamp * usersAmount * sDepi - sTiDepi) / YEAR;
-        
+        uint256 dateToProfit = (block.timestamp * sDepi - sTiDepi) / YEAR;
         return dateToProfit - lastProfitToDate + unrealizedProfit;
     }
     
