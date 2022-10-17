@@ -3,6 +3,7 @@ import "@nomicfoundation/hardhat-toolbox";
 import { HardhatUserConfig } from "hardhat/types";
 import "@nomicfoundation/hardhat-chai-matchers";
 import "@openzeppelin/hardhat-upgrades";
+import "hardhat-contract-sizer";
 import { infuraApiKey, privateKey, mnemonic } from "./network_keys/secrets.json";
 
 const Infura = {
@@ -13,7 +14,15 @@ const Infura = {
   BSC: "https://bsc-dataseed1.binance.org "
 };
 const config: HardhatUserConfig = {
-  solidity: "0.8.12",
+  solidity: {
+    version : "0.8.12",
+    settings : {
+      optimizer : {
+        enabled : true,
+        runs : 200
+      }
+    }
+  },
   networks: {
     hardhat: {
       forking: {
