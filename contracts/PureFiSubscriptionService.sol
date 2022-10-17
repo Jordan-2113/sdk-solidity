@@ -4,10 +4,7 @@ import "../openzeppelin-contracts-upgradeable-master/contracts/access/AccessCont
 import "../openzeppelin-contracts-upgradeable-master/contracts/token/ERC20/IERC20Upgradeable.sol";
 import "../openzeppelin-contracts-upgradeable-master/contracts/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import "./tokenbuyer/ITokenBuyer.sol";
-
-interface IProfitDistributor{
-    function distributeProfit(uint256 amountTokens) external;
-}
+import "./interfaces/IProfitDistributor.sol";
 
 contract PureFiSubscriptionService is AccessControlUpgradeable {
 
