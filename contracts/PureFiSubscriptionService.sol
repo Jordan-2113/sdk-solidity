@@ -3,10 +3,12 @@ pragma solidity >=0.8.0;
 import "../openzeppelin-contracts-upgradeable-master/contracts/access/AccessControlUpgradeable.sol";
 import "../openzeppelin-contracts-upgradeable-master/contracts/token/ERC20/IERC20Upgradeable.sol";
 import "../openzeppelin-contracts-upgradeable-master/contracts/token/ERC20/utils/SafeERC20Upgradeable.sol";
+import "../chainlink/contracts/src/v0.8/AutomationCompatible.sol";
+
 import "./tokenbuyer/ITokenBuyer.sol";
 import "./interfaces/IProfitDistributor.sol";
 
-contract PureFiSubscriptionService is AccessControlUpgradeable {
+contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompatible {
 
     using SafeERC20Upgradeable for IERC20Upgradeable;
 
@@ -34,6 +36,9 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
     uint8 private profitDistributionPart;//percents / P100
     uint24 private profitDistributionInterval;//seconds
     address private profitDistributionAddress; // distributor contract address
+
+    // 2000006
+    address distributionKeeper; // address of keeper rosponsible for profitDistribution
 
     struct Tier{
         uint8 isactive; //1 - active, 0 - non acvite (can't subscribe)
@@ -64,10 +69,13 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
     2000004 -> 2000005
     1. fix using busdToUfi function
     2. fix formula in _collectProfit(), _estimateProfit
+    2000005->2000006
+    1. Make contract keeper compatible
+        * add address of keeper
     */
     function version() public pure returns(uint32){
         // 000.000.000 - Major.minor.internal
-        return 2000005;
+        return 2000006;
     }
 
     function initialize(address _admin, address _ufi, address _tokenBuyer, address _profitCollectionAddress) public initializer{
@@ -110,14 +118,18 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
     }
 
     function distributeProfit() external {
+        _distributeProfit();
+    } 
+
+    function _distributeProfit() internal{
         uint256 totalTokensToDistribute = _collectProfit();
         uint256 tokensToDistribute = totalTokensToDistribute * profitDistributionPart / P100;
         ufiToken.approve(profitDistributionAddress, tokensToDistribute);
         ufiToken.transfer(profitCollectionAddress, totalTokensToDistribute - tokensToDistribute);
         emit ProfitDistributed(profitCollectionAddress, totalTokensToDistribute - tokensToDistribute);
         emit ProfitDistributed(profitDistributionAddress, tokensToDistribute);
-        IProfitDistributor(profitDistributionAddress).distributeProfit(tokensToDistribute);
-    } 
+        IProfitDistributor(profitDistributionAddress).setDistributionReadinessFlag();
+    }
 
     function subscribe(uint8 _tier) external payable {
        _subscribe(_tier, msg.sender);
@@ -386,5 +398,25 @@ contract PureFiSubscriptionService is AccessControlUpgradeable {
         return dateToProfit - lastProfitToDate + unrealizedProfit;
     }
     
+    // Keeper compatible functions
+    function checkUpkeep(bytes calldata checkData) external returns (bool upkeepNeeded, bytes memory performData){
+        if( block.timestamp - lastProfitDistributedTimestamp > profitDistributionInterval ){
+            upkeepNeeded = true;
+        }
+    }
+
+    function performUpkeep(bytes calldata performData) external{
+        _isKeeper();
+        require(block.timestamp - lastProfitDistributedTimestamp > profitDistributionInterval, "Interval not ends");
+        _distributeProfit();
+    }
+
+    function setDistributionKeeper( address _distributionKeeper ) external onlyRole(DEFAULT_ADMIN_ROLE){
+        distributionKeeper = _distributionKeeper;
+    }
+
+    function _isKeeper() internal view {
+        require(msg.sender == distributionKeeper, "Unauthorized");
+    }
 
 }

@@ -4,7 +4,7 @@ import { HardhatUserConfig } from "hardhat/types";
 import "@nomicfoundation/hardhat-chai-matchers";
 import "@openzeppelin/hardhat-upgrades";
 import "hardhat-contract-sizer";
-import { infuraApiKey, privateKey, mnemonic } from "./network_keys/secrets.json";
+import { infuraApiKey, privateKey, mnemonic, etherscanApiKey } from "./network_keys/secrets.json";
 
 const Infura = {
   Mainnet: "https://mainnet.infura.io/v3/" + infuraApiKey,
@@ -68,6 +68,9 @@ const config: HardhatUserConfig = {
     }
 
 
+  },
+  etherscan : {
+    apiKey : etherscanApiKey,
   }
   
 
