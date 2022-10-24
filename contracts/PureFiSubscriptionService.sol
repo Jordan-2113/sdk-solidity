@@ -37,9 +37,6 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
     uint24 private profitDistributionInterval;//seconds
     address private profitDistributionAddress; // distributor contract address
 
-    // 2000006
-    address distributionKeeper; // address of keeper rosponsible for profitDistribution
-
     struct Tier{
         uint8 isactive; //1 - active, 0 - non acvite (can't subscribe)
         uint48 subscriptionDuration; //subscriptionDuration = token lockup time in seconds.
@@ -71,7 +68,7 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
     2. fix formula in _collectProfit(), _estimateProfit
     2000005->2000006
     1. Make contract keeper compatible
-        * add address of keeper
+        
     */
     function version() public pure returns(uint32){
         // 000.000.000 - Major.minor.internal
@@ -124,7 +121,7 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
     function _distributeProfit() internal{
         uint256 totalTokensToDistribute = _collectProfit();
         uint256 tokensToDistribute = totalTokensToDistribute * profitDistributionPart / P100;
-        ufiToken.approve(profitDistributionAddress, tokensToDistribute);
+        ufiToken.transfer(profitDistributionAddress, tokensToDistribute);
         ufiToken.transfer(profitCollectionAddress, totalTokensToDistribute - tokensToDistribute);
         emit ProfitDistributed(profitCollectionAddress, totalTokensToDistribute - tokensToDistribute);
         emit ProfitDistributed(profitDistributionAddress, tokensToDistribute);
@@ -406,17 +403,9 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
     }
 
     function performUpkeep(bytes calldata performData) external{
-        _isKeeper();
         require(block.timestamp - lastProfitDistributedTimestamp > profitDistributionInterval, "Interval not ends");
         _distributeProfit();
     }
 
-    function setDistributionKeeper( address _distributionKeeper ) external onlyRole(DEFAULT_ADMIN_ROLE){
-        distributionKeeper = _distributionKeeper;
-    }
-
-    function _isKeeper() internal view {
-        require(msg.sender == distributionKeeper, "Unauthorized");
-    }
 
 }
