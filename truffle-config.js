@@ -1,13 +1,16 @@
 "use strict";
-const { infuraApiKey, mnemonic } = require('./network_keys/secrets.json');
+const { infuraApiKey, mnemonic, bscnode } = require('./network_keys/secrets.json');
 const HDWalletProvider = require("@truffle/hdwallet-provider");
 
+// wss://mainnet.infura.io/ws/v3/
+// https://mainnet.infura.io/v3/
+
 const Infura = {
-  Mainnet: "https://mainnet.infura.io/v3/" + infuraApiKey,
+  Mainnet: "wss://mainnet.infura.io/ws/v3/" + infuraApiKey,
   Ropsten: "https://ropsten.infura.io/v3/" + infuraApiKey,
   Rinkeby: "https://rinkeby.infura.io/v3/" + infuraApiKey,
   Kovan: "https://kovan.infura.io/v3/" + infuraApiKey,
-  BSC: "https://bsc-dataseed1.binance.org "
+  BSC: bscnode
 };
 
 module.exports = {
@@ -15,7 +18,7 @@ module.exports = {
     test: {
       host: "127.0.0.1",
       port: 8545,
-      network_id: 5777, //Match Ganache(Truffle) network id
+      network_id: "*", //Match Ganache(Truffle) network id
       gas: 5000000,
     },
     rinkeby: {
@@ -27,8 +30,12 @@ module.exports = {
     mainnet: {
       network_id: 1,
       provider: () => new HDWalletProvider(mnemonic, Infura.Mainnet),
-      gas: 500000,
-      gasPrice: '100000000000'
+      gas: 5000000,
+      // gasPrice: '20000000000',
+      maxFeePerGas: '20000000000',
+      maxPriorityFeePerGas: '4000000000',
+      timeoutBlocks: 1000,
+      networkCheckTimeout: 20000
     },
     ropsten: {
       network_id: 3,
@@ -42,7 +49,7 @@ module.exports = {
       gas: 10000000,
     },
     bsc: {
-      provider: () => new HDWalletProvider(mnemonic, `wss://rough-thrumming-feather.bsc.quiknode.pro/47874753c40f33a5bcd1eefa55ea0084d69836f7/`),
+      provider: () => new HDWalletProvider(mnemonic, bscnode),
       network_id: 56,
       confirmations: 10,
       timeoutBlocks: 200,
