@@ -4,7 +4,7 @@ import { HardhatUserConfig } from "hardhat/types";
 import "@nomicfoundation/hardhat-chai-matchers";
 import "@openzeppelin/hardhat-upgrades";
 import "hardhat-contract-sizer";
-import { infuraApiKey, privateKey, mnemonic, etherscanApiKey } from "./network_keys/secrets.json";
+import { infuraApiKey, privateKey, mnemonic, etherscanApiKey, bscnode } from "./network_keys/secrets.json";
 
 const Infura = {
   Mainnet: "https://mainnet.infura.io/v3/" + infuraApiKey,
@@ -54,7 +54,7 @@ const config: HardhatUserConfig = {
       accounts : { mnemonic : mnemonic }
     },
     bsc : {
-      url : "wss://rough-thrumming-feather.bsc.quiknode.pro/47874753c40f33a5bcd1eefa55ea0084d69836f7/",
+      url : bscnode,
       gas: 5000000,
       gasPrice: 5000000000,
       accounts : { mnemonic : mnemonic }
