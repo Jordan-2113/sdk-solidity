@@ -2,7 +2,7 @@ import { ethers, upgrades} from "hardhat";
 import hre from "hardhat";
 
 
-const SUBSCRIPTION_SERVICE = "0xb86d329f8f5eF34d72D270EAca7B27fDb7331229";
+const SUBSCRIPTION_SERVICE = "0xBbC3Df0Af62b4a469DD44c1bc4e8804268dB1ea3";
 
 const DISTRIBUTION_CONTRACT = "0x6C65ffE266C02aC96ab9c455B8b8CfC26f275bF9";
 const PART = 20; // % 

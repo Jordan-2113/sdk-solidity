@@ -72,7 +72,7 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
     */
     function version() public pure returns(uint32){
         // 000.000.000 - Major.minor.internal
-        return 2000006;
+        return 2000007;
     }
 
     function initialize(address _admin, address _ufi, address _tokenBuyer, address _profitCollectionAddress) public initializer{
@@ -187,7 +187,7 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
             tokensLeftFromCurrentSubscription = userSubscriptions[_holder].tokensDeposited - unrealizedProfitFromCurrentSubscription;
         }
         //subscripbe to the _tier
-        (uint newSubscriptionPriceInWBNB, uint256 newSubscriptionPriceInUFI) = tokenBuyer.busdToUFI(tiers[_tier].priceInUSD * 10**18); // multiple by 10^18
+        (uint newSubscriptionPriceInWBNB, uint256 newSubscriptionPriceInUFI) = tokenBuyer.busdToUFI(tiers[_tier].priceInUSD);
         uint256 userBalanceUFI = ufiToken.balanceOf(_holder);
 
 
@@ -333,7 +333,7 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
             emit Unsubscribed(_subscriber, userCurrentSubscriptionTier, uint64(block.timestamp), actualProfit);
         }
         //subscripbe to the _tier
-        (uint newSubscriptionPriceInWBNB, uint256 newSubscriptionPriceInUFI) = tokenBuyer.busdToUFI(tiers[_tier].priceInUSD * 10**18); // multiply by 10^18
+        (uint newSubscriptionPriceInWBNB, uint256 newSubscriptionPriceInUFI) = tokenBuyer.busdToUFI(tiers[_tier].priceInUSD);
         uint256 userBalanceUFI = ufiToken.balanceOf(_subscriber);
         uint256 ethRemaining = msg.value;
         if(tokensLeftFromCurrentSubscription >= newSubscriptionPriceInUFI){
