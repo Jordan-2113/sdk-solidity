@@ -72,7 +72,7 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
     */
     function version() public pure returns(uint32){
         // 000.000.000 - Major.minor.internal
-        return 2000007;
+        return 2000008;
     }
 
     function initialize(address _admin, address _ufi, address _tokenBuyer, address _profitCollectionAddress) public initializer{
@@ -334,7 +334,7 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
         }
         //subscripbe to the _tier
         (uint newSubscriptionPriceInWBNB, uint256 newSubscriptionPriceInUFI) = tokenBuyer.busdToUFI(tiers[_tier].priceInUSD);
-        uint256 userBalanceUFI = ufiToken.balanceOf(_subscriber);
+        uint256 userBalanceUFI = ufiToken.balanceOf(msg.sender);
         uint256 ethRemaining = msg.value;
         if(tokensLeftFromCurrentSubscription >= newSubscriptionPriceInUFI){
             //this is the case when user subsribes to lower package and remaining tokens are more then enough
