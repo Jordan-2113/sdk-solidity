@@ -4,7 +4,7 @@ import { HardhatUserConfig } from "hardhat/types";
 import "@nomicfoundation/hardhat-chai-matchers";
 import "@openzeppelin/hardhat-upgrades";
 import "hardhat-contract-sizer";
-import { infuraApiKey, privateKey, mnemonic, etherscanApiKey, bscnode } from "./network_keys/secrets.json";
+import { infuraApiKey, privateKey, mnemonic, etherscanApiKey, bscnode, privateKeyTest } from "./network_keys/secrets.json";
 
 const Infura = {
   Mainnet: "https://mainnet.infura.io/v3/" + infuraApiKey,
@@ -66,6 +66,10 @@ const config: HardhatUserConfig = {
       gas: 5000000,
       gasPrice: 10000000000,
       accounts : { mnemonic : mnemonic }
+    },
+    auroratest : {
+      url : "https://testnet.aurora.dev",
+      accounts : [ privateKeyTest ]
     }
 
 
