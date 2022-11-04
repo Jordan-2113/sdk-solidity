@@ -4,7 +4,7 @@ pragma solidity ^0.8.0;
 
 import "../openzeppelin-contracts-upgradeable-master/contracts/proxy/utils/Initializable.sol";
 import "./interfaces/IPureFiVerifier.sol";
-
+import "./VerificationInfo.sol";
 abstract contract PureFiContext is Initializable{
 
     enum DefaultRule {NONE, KYC, AML, KYCAML} 
@@ -31,9 +31,16 @@ abstract contract PureFiContext is Initializable{
     }
 
     modifier requiresOnChainKYC(address user){
+
+        VerificationInfo.VerificationData memory expectedData = VerificationInfo.VerificationData({
+            from : user,
+            to : address(0),
+            token : address(0),
+            amount : 0
+        });
         uint256[] memory data = new uint256[](4);
         bytes memory signature;
-        (_txLocalCheckResult, _txLocalCheckReason) = pureFiVerifier.defaultKYCCheck(user, data, signature);
+        (_txLocalCheckResult, _txLocalCheckReason) = pureFiVerifier.defaultKYCCheck(expectedData, data, signature);
         require(_txLocalCheckResult == _VERIFICATION_SUCCESS, _txLocalCheckReason);
         //here the smart contract can decide whether to fail a transaction in case of check failed
 
@@ -46,17 +53,17 @@ abstract contract PureFiContext is Initializable{
     }
 
 
-    modifier compliesDefaultRule(DefaultRule rule, address expectedFundsSender, uint256[] memory data, bytes memory signature) {
+    modifier compliesDefaultRule(DefaultRule rule, VerificationInfo.VerificationData calldata expectedData, uint256[] memory data, bytes memory signature) {
         // set context variable
         if(rule == DefaultRule.NONE){
             _txLocalCheckResult = _VERIFICATION_SUCCESS;
         } else {
             if(rule == DefaultRule.KYC){
-                (_txLocalCheckResult, _txLocalCheckReason) = pureFiVerifier.defaultKYCCheck(expectedFundsSender, data, signature);
+                (_txLocalCheckResult, _txLocalCheckReason) = pureFiVerifier.defaultKYCCheck(expectedData, data, signature);
             } else if (rule == DefaultRule.AML){
-                (_txLocalCheckResult, _txLocalCheckReason) = pureFiVerifier.defaultAMLCheck(expectedFundsSender, data, signature);
+                (_txLocalCheckResult, _txLocalCheckReason) = pureFiVerifier.defaultAMLCheck(expectedData, data, signature);
             } else if (rule == DefaultRule.KYCAML){
-                (_txLocalCheckResult, _txLocalCheckReason) = pureFiVerifier.defaultKYCAMLCheck(expectedFundsSender, data, signature);
+                (_txLocalCheckResult, _txLocalCheckReason) = pureFiVerifier.defaultKYCAMLCheck(expectedData, data, signature);
             }
             require(_txLocalCheckResult == _VERIFICATION_SUCCESS, _txLocalCheckReason);
         }
@@ -71,9 +78,9 @@ abstract contract PureFiContext is Initializable{
         _txLocalCheckReason = _NOT_VERIFIED_REASON;
     }
 
-    modifier compliesCustomRule(uint256 expectedRuleID, address expectedFundsSender, uint256[] memory data, bytes memory signature) {
+    modifier compliesCustomRule(uint256 expectedRuleID, VerificationInfo.VerificationData calldata expectedData, uint256[] memory data, bytes memory signature) {
 
-        (_txLocalCheckResult, _txLocalCheckReason) = pureFiVerifier.verifyAgainstRule(expectedFundsSender, expectedRuleID, data, signature);
+        (_txLocalCheckResult, _txLocalCheckReason) = pureFiVerifier.verifyAgainstRule(expectedData, expectedRuleID, data, signature);
         require(_txLocalCheckResult == _VERIFICATION_SUCCESS, _txLocalCheckReason);
         
         //here the smart contract can decide whether to fail a transaction in case of check failed
