@@ -70,8 +70,11 @@ const config: HardhatUserConfig = {
     auroratest : {
       url : "https://testnet.aurora.dev",
       accounts : [ privateKeyTest ]
+    },
+    auroramainnet : {
+      url : "https://mainnet.aurora.dev",
+      accounts : [ privateKey ]
     }
-
 
   },
   etherscan : {

@@ -1,8 +1,9 @@
 import { ethers, upgrades } from "hardhat";
 import hre from "hardhat";
+import { BigNumber } from "ethers";
 
-const ADMIN = "0x5c8C756c8379d7189F0a773D7459f54F792aE270";
-
+const ADMIN = "0x1e1Baf37B7C89341DEdd688CE74785A703e2e0E3";
+const ISSUER = "0xee5FF7E46FB99BdAd874c6aDb4154aaE3C90E698";
 async function main() {
 
     const ISSUER_REGISTRY = await ethers.getContractFactory("PureFiIssuerRegistry");
@@ -58,7 +59,30 @@ async function main() {
     await verifier.initialize(registry.address, whitelist.address);
 
 
+    // add params
+
+    await verifier.setUint256(BigNumber.from(3), BigNumber.from(300));
+    await verifier.setUint256(BigNumber.from(4), BigNumber.from(431040));
+    await verifier.setUint256(BigNumber.from(5), BigNumber.from(777));
+    await verifier.setUint256(BigNumber.from(6), BigNumber.from(731040));
+    await verifier.setString(1, "PureFiVerifier: Issuer signature invalid");
+    await verifier.setString(2, "PureFiVerifier: Funds sender doesn't match verified wallet");
+    await verifier.setString(3, "PureFiVerifier: Verification data expired");
+    await verifier.setString(4, "PureFiVerifier: Rule verification failed");
+    await verifier.setString(5, "PureFiVerifier: Credentials time mismatch");
+    await verifier.setString(6, "PureFiVerifier: Data package invalid")
+
+
+    // // add issuer
+
+    console.log("12");
+    const tx = await registry.register(
+        ISSUER,
+        '0x1111111111111111111111111111111111111111111111111111111111111111'
+    );
+    console.log("hash : ", tx.hash);
 }
+
 
 main().catch((error) => {
     console.error(error);
