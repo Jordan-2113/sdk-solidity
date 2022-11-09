@@ -8,10 +8,12 @@ import "./libraries/SignLib.sol";
 import "./PureFiWhitelist.sol";
 import "./PureFiIssuerRegistry.sol";
 import "./utils/ParamStorage.sol";
-import "./VerificationInfo.sol";
+import "./interfaces/IPureFiVerifier.sol";
 
 
-contract PureFiVerifier is OwnableUpgradeable, ParamStorage, SignLib,  VerificationInfo{
+
+
+contract PureFiVerifier is OwnableUpgradeable, ParamStorage, SignLib, IPureFiVerifier{
 
   uint16 private constant ERROR_ISSUER_SIGNATURE_INVALID = 1;
   uint16 private constant ERROR_FUNDS_SENDER_DOESNT_MATCH_ADDRESS_VERIFIED = 2;
@@ -57,14 +59,13 @@ contract PureFiVerifier is OwnableUpgradeable, ParamStorage, SignLib,  Verificat
     @param signature - Off-chain verifier signature
    */
   function verifyIssuerSignature(uint256[] memory data, bytes memory signature) external view returns (bool){
-      address recovered = recoverSigner(keccak256(abi.encodePacked(data[0], data[1], data[2], data[3])), signature);
+      address recovered = recoverSigner(keccak256(_encodeData(data)), signature);
       return PureFiIssuerRegistry(addressParams[PARAM_ISSUER_REGISTRY_ADDRESS]).isValidIssuer(recovered);
   }
 
   /**
   performs default AML Verification of the funds sender
   Params:
-  @param expectedData- an address sending funds (can't be automatically determined here, so has to be provided by the caller)
   @param data - signed data package from the off-chain verifier
     data[0] - verification session ID
     data[1] - circuit ID (if required)
@@ -72,29 +73,29 @@ contract PureFiVerifier is OwnableUpgradeable, ParamStorage, SignLib,  Verificat
     data[3] - verified wallet - to be the same as msg.sender
   @param signature - Off-chain issuer signature
   */
-  function defaultAMLCheck(VerificationData calldata expectedData, uint256[] memory data, bytes memory signature) external view returns (uint16, string memory){
-    return _verifyAgainstRule_IM(expectedData, uintParams[PARAM_DEFAULT_AML_RULE], data, signature);
+  function defaultAMLCheck( uint256[] memory data, bytes memory signature) external view returns (VerificationData memory, uint16){
+    return _verifyAgainstRule_IM(data, signature);
   }
 
   /**
   performs default KYC Verification of the funds sender from on-chain whitelist
   Params:
-  @param expectedData - an address sending funds (can't be automatically determined here, so has to be provided by the caller)
   */
-  function defaultKYCCheck(VerificationData calldata expectedData, uint256[] memory data, bytes memory signature) external view returns (uint16, string memory){
+  function defaultKYCCheck(uint256[] memory data, bytes memory signature) external view returns (VerificationData memory, uint16){
     if(( data.length == 4 || data.length ==7 ) && data[0] > 0) {
       //attempt IM check if data is filled
-      return _verifyAgainstRule_IM(expectedData, uintParams[PARAM_DEFAULT_KYC_RULE], data, signature); 
+      return _verifyAgainstRule_IM(data, signature); 
     } else {
       //try with W check when data is empty.
-      return _verifyAgainstRule_W(expectedData.from, uintParams[PARAM_DEFAULT_KYC_RULE]);
+      // TODO : Questinable moment. It can be unclear for customer what data must be
+      (uint16 statusCode, ) = _verifyAgainstRule_W(address(uint160(data[0])), uintParams[PARAM_DEFAULT_KYC_RULE]);
+      return (_getEmptyVerificationData(), statusCode);
     }
   }
 
   /**
   performs default KYC + AML Verification of the funds sender from on-chain whitelist
   Params:
-  @param expectedData - an address sending funds (can't be automatically determined here, so has to be provided by the caller)
   @param data - signed data package from the off-chain verifier
     data[0] - verification session ID
     data[1] - circuit ID (if required)
@@ -102,32 +103,30 @@ contract PureFiVerifier is OwnableUpgradeable, ParamStorage, SignLib,  Verificat
     data[3] - verified wallet - to be the same as msg.sender
   @param signature - Off-chain issuer signature
   */
-  function defaultKYCAMLCheck(VerificationData calldata expectedData, uint256[] memory data, bytes memory signature) external view returns (uint16, string memory){
+  function defaultKYCAMLCheck(uint256[] memory data, bytes memory signature) external view returns (VerificationData memory, uint16){
     if(data.length !=4 || data.length != 7 ){
-      return _fail(ERROR_DATA_PACKAGE_INVALID);
+      return ( _getEmptyVerificationData(), ERROR_DATA_PACKAGE_INVALID);
     }
     if(data[1] == uintParams[PARAM_DEFAULT_KYCAML_RULE]){
       //attempt interactive KYC+AML rule check
-      return _verifyAgainstRule_IM(expectedData, uintParams[PARAM_DEFAULT_KYCAML_RULE], data, signature);
+      return _verifyAgainstRule_IM(data, signature);
     } else if(data[1] == uintParams[PARAM_DEFAULT_AML_RULE]){
       //attempt separate KYC/whitelist and AML/Interactive check;
-      (uint16 _kycCode, string memory _message) = _verifyAgainstRule_W(expectedData.from, uintParams[PARAM_DEFAULT_KYC_RULE]);
+      (uint16 _kycCode, ) = _verifyAgainstRule_W(address(uint160(data[3])), uintParams[PARAM_DEFAULT_KYC_RULE]);
       if(_kycCode > 0 ){
-        return (_kycCode, _message); //return original error code 
+        return (_getEmptyVerificationData(), _kycCode); //return original error code 
       } else {
         //attempt separate AML check and return result
-        return _verifyAgainstRule_IM(expectedData, uintParams[PARAM_DEFAULT_AML_RULE], data, signature);
+        return _verifyAgainstRule_IM(data, signature);
       }
     } else {
-      return _fail(ERROR_RULE_DOESNT_MATCH);
+      return (_getEmptyVerificationData() , ERROR_RULE_DOESNT_MATCH);
     }
   }
 
   /**
   performs verification against the rule specified in combined mode. Attempts Interactive mode if data is filled, then Whitelist mode.
   Params:
-  @param expectedData - an address sending funds (can't be automatically determined here, so has to be provided by the caller)
-  @param expectedRuleID - a Rule identifier expected by caller
   @param data - signed data package from the off-chain verifier
     data[0] - verification session ID
     data[1] - circuit ID (if required)
@@ -139,21 +138,20 @@ contract PureFiVerifier is OwnableUpgradeable, ParamStorage, SignLib,  Verificat
     data[6] - token amount
   @param signature - Off-chain issuer signature
   */
-  function verifyAgainstRule(VerificationData calldata expectedData, uint256 expectedRuleID, uint256[] memory data, bytes memory signature) external view returns (uint16, string memory){
+  function verifyAgainstRule( uint256[] memory data, bytes memory signature) external view returns (VerificationData memory, uint16){
     if((data.length == 4 || data.length ==7) && data[0] > 0) {
       //attempt IM check if data is filled
-      return _verifyAgainstRule_IM(expectedData, expectedRuleID, data, signature); 
+      return _verifyAgainstRule_IM(data, signature); 
     } else {
       //try with W check when data is empty.
-      return _verifyAgainstRule_W(expectedData.from, expectedRuleID);
+      (uint16 status, ) = _verifyAgainstRule_W(address(uint160(data[3])), data[1]);
+      return (_getEmptyVerificationData(), status);
     }
   }
 
   /**
   performs verification against the rule specified in Interactive mode
   Params:
-  @param expectedData - an address sending funds (can't be automatically determined here, so has to be provided by the caller)
-  @param expectedRuleID - a Rule identifier expected by caller
   @param data - signed data package from the off-chain verifier
     data[0] - verification session ID
     data[1] - circuit ID (if required)
@@ -161,8 +159,8 @@ contract PureFiVerifier is OwnableUpgradeable, ParamStorage, SignLib,  Verificat
     data[3] - verified wallet - to be the same as msg.sender
   @param signature - Off-chain issuer signature
   */
-  function verifyAgainstRuleIM(VerificationData calldata expectedData, uint256 expectedRuleID, uint256[] memory data, bytes memory signature) external view returns (uint16, string memory){
-    return _verifyAgainstRule_IM(expectedData, expectedRuleID, data, signature);
+  function verifyAgainstRuleIM( uint256[] memory data, bytes memory signature) external view returns (VerificationData memory, uint16){
+    return _verifyAgainstRule_IM(data, signature);
   }
 
   /**
@@ -192,45 +190,65 @@ contract PureFiVerifier is OwnableUpgradeable, ParamStorage, SignLib,  Verificat
   /**
   Interactive mode rule verification (data and signature provided by the Issuer backend)
   */
-  function _verifyAgainstRule_IM(VerificationData calldata expectedData, uint256 expectedRuleID, uint256[] memory data, bytes memory signature) private view returns (uint16, string memory){
-    if(data.length !=4 && data.length != 7){
-      return _fail(ERROR_DATA_PACKAGE_INVALID);
-    }
-    address recovered = recoverSigner(keccak256(abi.encodePacked(data[0], data[1], data[2], data[3])), signature);
+  function _verifyAgainstRule_IM(uint256[] memory data, bytes memory signature) private view returns (VerificationData memory, uint16){
+    
+    uint length = data.length;
+    require(length == 4 || length == 7 || length == 8, "PureFi Verifier : Invalid data package");
 
-    if(!PureFiIssuerRegistry(addressParams[PARAM_ISSUER_REGISTRY_ADDRESS]).isValidIssuer(recovered)){
-      return _fail(ERROR_ISSUER_SIGNATURE_INVALID); //"Signature invalid"
-    }
-    if(expectedData.from != address(uint160(data[3]))){
-      // "DefaultAMLCheck: tx sender doesn't match verified wallet"
-      return _fail(ERROR_FUNDS_SENDER_DOESNT_MATCH_ADDRESS_VERIFIED);
-    }
+    address recovered = recoverSigner(keccak256(_encodeData(data)), signature);
+
+    require(
+      PureFiIssuerRegistry(addressParams[PARAM_ISSUER_REGISTRY_ADDRESS]).isValidIssuer(recovered), 
+      "PureFi Verifier : Invalid signature"
+    );
+
     // grace time recommended:
     // Ethereum: 10 min
     // BSC: 3 min
-    if(data[2] + uintParams[PARAM_DEFAULT_AML_GRACETIME] < block.timestamp){
-      //"DefaultAMLCheck: verification data expired"
-      return _fail(ERROR_PROOF_VALIDITY_EXPIRED);
-    }
-    if(data[1] != expectedRuleID){
-      //"DefaultAMLCheck: rule verification failed"
-      return _fail(ERROR_RULE_DOESNT_MATCH);
-    }
+    require(
+      data[2] + uintParams[PARAM_DEFAULT_AML_GRACETIME] > block.timestamp, 
+      "PureFi Verifier : Proof validity expired"
+    );
 
-    if(data.length == 7){
-      if(expectedData.to != address(uint160(data[4]))){
-        return _fail(ERROR_RECIPIENT_MISMATCH);
-      }
-      if(expectedData.token != address(uint160(data[5]))){
-        return _fail(ERROR_ASSET_MISMATCH);
-      }
+    return (_getDataFromArray(data), 0);
 
-      if( expectedData.amount != data[6] ){
-        return _fail(ERROR_AMOUNT_MISMATCH);
-      }
-    }
-    return _succeed();
   }
+
+  function _encodeData( uint256[] memory data ) internal pure returns(bytes memory encodedData){
+      for(uint i = 0; i < data.length; i++){
+        encodedData = bytes.concat(encodedData, abi.encodePacked(data[i]));
+      }
+  }
+
+  function _getDataFromArray( uint256[] memory data ) internal pure returns( VerificationData memory verificationData ){
+    verificationData = _getEmptyVerificationData();
+
+    // common field 
+    verificationData.from = address(uint160(data[3]));
+
+    if( data.length == 4 ){
+      verificationData.typ = 1;
+    }else if(data.length >= 7){
+      verificationData.typ = 2;
+      verificationData.to = address(uint160(data[4]));
+      verificationData.token = address(uint160(data[5]));
+      verificationData.amount = data[6];
+    }
+    //TODO : set payload field
+
+  }
+
+  function _getEmptyVerificationData() internal pure returns (VerificationData memory){
+    return VerificationData({
+      typ : 0,
+      from : address(0),
+      to : address(0),
+      token : address(0),
+      amount : 0,
+      payload : ''
+    });
+  }
+
 
   function _fail(uint16 _errorCode) private view returns (uint16, string memory) {
     return (_errorCode, stringParams[_errorCode]);
