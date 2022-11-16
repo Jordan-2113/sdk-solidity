@@ -28,17 +28,11 @@ contract UFIBuyerBSCWithCustomCheck is PureFiTokenBuyerBSC, PureFiContext{
     /**
     * buys UFI tokens for the full amount of _value provided.
     * @param _to - address to send bought tokens to
-    * @param data - signed data package from the off-chain verifier
-    *    data[0] - verification session ID
-    *    data[1] - rule ID (if required)
-    *    data[2] - verification timestamp
-    *    data[3] - verified wallet - to be the same as msg.sender
-    * @param signature - Off-chain verifier signature
+    * @param _purefidata - a signed data package from the PureFi Issuer
     */
     function buyForWithCompliance(address _to,
-                    uint256[] memory data, 
-                    bytes memory signature
-                    ) external payable compliesCustomRule(ruleID, msg.sender, data, signature) {
+                    bytes calldata _purefidata
+                    ) external payable withCustomAddressVerification(ruleID, msg.sender, _purefidata) {
         _buy(_to);
     }
 
