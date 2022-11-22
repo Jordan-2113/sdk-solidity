@@ -9,7 +9,7 @@ import "./PureFiWhitelist.sol";
 import "./PureFiIssuerRegistry.sol";
 import "./utils/ParamStorage.sol";
 import "./interfaces/IPureFiVerifier.sol";
-
+import "hardhat/console.sol";
 
 contract PureFiVerifier is OwnableUpgradeable, ParamStorage, SignLib, IPureFiVerifier{
 
@@ -40,9 +40,9 @@ contract PureFiVerifier is OwnableUpgradeable, ParamStorage, SignLib, IPureFiVer
   // purefipackage = {uint8 purefipackagetype, bytes packagedata}. 
   //      purefipackagetype = uint8, 1 byte
   //      packagedata = bytes, dynamic, remaining data
-  // if(purefipackagetype = 1) => packagedata = {uint256 ruleID, address sender}
-  // if(purefipackagetype = 2) => packagedata = {uint256 ruleID, address sender, address receiver, address token, uint258 amount}
-  // if(purefipackagetype = 3) => packagedata = {uint256 ruleID, bytes payload}
+  // if(purefipackagetype = 1) => packagedata = {uint256 ruleID, uint256 sessionId, address sender}
+  // if(purefipackagetype = 2) => packagedata = {uint256 ruleID, uint256 sessionId, address sender, address receiver, address token, uint258 amount}
+  // if(purefipackagetype = 3) => packagedata = {uint256 ruleID, uint256 sessionId, bytes payload}
   // later on we'll add purefipackagetype = 4. with non-interactive mode data, and this will go into payload
 
   function validatePureFiData(bytes memory _purefidata) external override view returns (bytes memory, uint16){
@@ -66,16 +66,16 @@ contract PureFiVerifier is OwnableUpgradeable, ParamStorage, SignLib, IPureFiVer
       timestamp + uintParams[PARAM_DEFAULT_AML_GRACETIME] > block.timestamp, 
       "PureFi Verifier : Proof validity expired"
     );
-
+  
     return (purefipackage, 0);
   }
 
 
   // decode PureFi data package
-  function decodePureFiPackage(bytes calldata _purefipackage) external override pure returns (VerificationPackage memory){
-    uint8 packagetype = uint8(_purefipackage[0]);
+  function decodePureFiPackage(bytes calldata _purefipackage) external override view returns (VerificationPackage memory){
+    uint256 packagetype = uint256(bytes32(_purefipackage[:32]));
     if(packagetype == 1){
-      (uint256 ruleID, uint256 sessionID, address sender) = abi.decode(_purefipackage[1:], (uint256, uint256, address));
+      (, uint256 ruleID, uint256 sessionID, address sender) = abi.decode(_purefipackage, (uint8, uint256, uint256, address));
       return VerificationPackage({
           packagetype : 1,
           session: sessionID,
@@ -88,7 +88,7 @@ contract PureFiVerifier is OwnableUpgradeable, ParamStorage, SignLib, IPureFiVer
         }); 
     }
     else if(packagetype == 2){
-      (uint256 ruleID, uint256 sessionID, address sender, address receiver, address token_addr, uint256 tx_amount) = abi.decode(_purefipackage[1:], (uint256, uint256, address, address, address, uint256));
+      (, uint256 ruleID, uint256 sessionID, address sender, address receiver, address token_addr, uint256 tx_amount) = abi.decode(_purefipackage, (uint8, uint256, uint256, address, address, address, uint256));
       return VerificationPackage({
           packagetype : 2,
           rule : ruleID,
@@ -101,9 +101,9 @@ contract PureFiVerifier is OwnableUpgradeable, ParamStorage, SignLib, IPureFiVer
         }); 
     }
     else if(packagetype == 3){
-      (uint256 ruleID, uint256 sessionID, bytes memory payload_data) = abi.decode(_purefipackage[1:], (uint256, uint256, bytes));
+      (, uint256 ruleID, uint256 sessionID, bytes memory payload_data) = abi.decode(_purefipackage, (uint8, uint256, uint256, bytes));
       return VerificationPackage({
-          packagetype : 2,
+          packagetype : 3,
           rule : ruleID,
           session: sessionID,
           from : address(0),

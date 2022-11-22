@@ -17,7 +17,10 @@ abstract contract PureFiContext is Initializable{
     bytes internal constant _PUREFI_CONTEXT_DATA_NOT_SET = "";
     uint256 internal constant _PUREFI_CONTEXT_NOT_VERIFIED = 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffa;
     uint256 internal constant _PUREFI_CONTEXT_VERIFIED = 0;
-    
+    uint16 internal constant PARAM_TYPE1_DEFAULT_AML_RULE = 1;
+    uint16 internal constant PARAM_TYPE1_DEFAULT_KYC_RULE = 2;
+    uint16 internal constant PARAM_TYPE1_DEFAULT_KYCAML_RULE = 3;
+
     address internal pureFiVerifier;
 
     uint256 private _txLocalPureFiCheckResult;
