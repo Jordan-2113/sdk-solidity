@@ -9,7 +9,6 @@ import "./PureFiWhitelist.sol";
 import "./PureFiIssuerRegistry.sol";
 import "./utils/ParamStorage.sol";
 import "./interfaces/IPureFiVerifier.sol";
-import "hardhat/console.sol";
 
 contract PureFiVerifier is OwnableUpgradeable, ParamStorage, SignLib, IPureFiVerifier{
 

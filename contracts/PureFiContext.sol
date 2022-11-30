@@ -34,23 +34,6 @@ abstract contract PureFiContext is Initializable{
         _;
     }
 
-    // modifier requiresOnChainKYC(address user){
-
-    //     uint256[] memory data = new uint256[](1);
-    //     data[0] = uint256(uint160(user));
-    //     bytes memory signature;
-    //     VerificationData memory verificationData;
-    //     (verificationData, _txLocalPureFiCheckResult) = pureFiVerifier.defaultKYCCheck(data, signature);
-    //     require(_txLocalPureFiCheckResult == _PUREFI_CONTEXT_VERIFIED, "PureFi Context : DefaultKYCCheck fail");
-    //     //here the smart contract can decide whether to fail a transaction in case of check failed
-
-    //     _;
-
-    //     // By storing the original value once again, a refund is triggered (see
-    //     // https://eips.ethereum.org/EIPS/eip-2200)
-    //     _txLocalPureFiCheckResult = _PUREFI_CONTEXT_NOT_VERIFIED;
-    // }
-
 
     modifier withPureFiContext(bytes calldata _purefidata) {
         _validateAndSetContext(_purefidata);
