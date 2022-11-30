@@ -28,7 +28,7 @@ contract PureFiVerifier is OwnableUpgradeable, ParamStorage, SignLib, IPureFiVer
    */
   function version() public pure returns(uint32){
     // 000.000.000 - Major.minor.internal
-    return 2000004;
+    return 3000000;
   }
 
   // IMPORTANT
@@ -71,11 +71,11 @@ contract PureFiVerifier is OwnableUpgradeable, ParamStorage, SignLib, IPureFiVer
 
 
   // decode PureFi data package
-  function decodePureFiPackage(bytes calldata _purefipackage) external override view returns (VerificationPackage memory){
+  function decodePureFiPackage(bytes calldata _purefipackage) external override pure returns (VerificationPackage memory package){
     uint256 packagetype = uint256(bytes32(_purefipackage[:32]));
     if(packagetype == 1){
       (, uint256 ruleID, uint256 sessionID, address sender) = abi.decode(_purefipackage, (uint8, uint256, uint256, address));
-      return VerificationPackage({
+      package = VerificationPackage({
           packagetype : 1,
           session: sessionID,
           rule : ruleID,
@@ -88,7 +88,7 @@ contract PureFiVerifier is OwnableUpgradeable, ParamStorage, SignLib, IPureFiVer
     }
     else if(packagetype == 2){
       (, uint256 ruleID, uint256 sessionID, address sender, address receiver, address token_addr, uint256 tx_amount) = abi.decode(_purefipackage, (uint8, uint256, uint256, address, address, address, uint256));
-      return VerificationPackage({
+      package = VerificationPackage({
           packagetype : 2,
           rule : ruleID,
           session: sessionID,
@@ -101,7 +101,7 @@ contract PureFiVerifier is OwnableUpgradeable, ParamStorage, SignLib, IPureFiVer
     }
     else if(packagetype == 3){
       (, uint256 ruleID, uint256 sessionID, bytes memory payload_data) = abi.decode(_purefipackage, (uint8, uint256, uint256, bytes));
-      return VerificationPackage({
+      package = VerificationPackage({
           packagetype : 3,
           rule : ruleID,
           session: sessionID,
@@ -111,8 +111,9 @@ contract PureFiVerifier is OwnableUpgradeable, ParamStorage, SignLib, IPureFiVer
           amount : 0,
           payload : payload_data
         }); 
+    } else {
+      require (false, "PureFiVerifier : invalid package data");
     }
-    require (false, "PureFiVerifier : invalid package data");
   }
 
   function _authorizeSetter(address _setter) internal virtual override view returns (bool){
