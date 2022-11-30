@@ -6,6 +6,7 @@ import "../../../openzeppelin-contracts-upgradeable-master/contracts/token/ERC20
 import "../../../openzeppelin-contracts-upgradeable-master/contracts/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import "./IERC20Full.sol";
 import "../../PureFiContext.sol";
+import {VerificationPackage} from "../../interfaces/IPureFiVerifier.sol";
 
 contract FilteredPool is ERC20Upgradeable, PureFiContext {
 
@@ -14,31 +15,39 @@ contract FilteredPool is ERC20Upgradeable, PureFiContext {
     IERC20Full public basicToken;
 
     uint256 public totalCap;
+    uint256 public expectedRuleID;
 
     event Deposit(address indexed writer, uint256 amount);
     event Withdraw(address indexed writer, uint256 amount);
 
-    function __Pool_init(address _basicToken, address _pureFiVerifier, string memory _description, string memory _symbol) internal initializer {
+    function __Pool_init(address _basicToken, address _pureFiVerifier, string memory _description, string memory _symbol, uint256 _ruleID) internal initializer {
         __ERC20_init(_description, _symbol);
         __PureFiContext_init_unchained(_pureFiVerifier);
-        __Pool_init_unchained(_basicToken);
+        __Pool_init_unchained(_basicToken, _ruleID);
     }
 
-    function __Pool_init_unchained(address _basicToken) internal initializer {
+    function __Pool_init_unchained(address _basicToken, uint256 _ruleID) internal initializer {
         basicToken = IERC20Full(_basicToken);
+        expectedRuleID = _ruleID;
     }
 
     /**
     * deposit ERC20 tokens function, assigns Liquidity tokens to provided address.
     * @param _amount - amount to deposit
     * @param _to - address to assign liquidity tokens to
-    * @param _purefidata - purefi data
+    * @param _purefidata - purefi issuer data. Expecting type 2 data here. 
     */
     function depositTo(
         uint256 _amount,
         address _to,
         bytes calldata _purefidata
-    ) external virtual withDefaultAddressVerification(DefaultRule.KYCAML, msg.sender, _purefidata) {
+    ) external virtual withPureFiContext(_purefidata) {
+        VerificationPackage memory package = getVerificationPackage();
+        require(package.rule == expectedRuleID, "Farming: ruleID mismatch");
+        require(package.from == msg.sender, "Farming: invalid sender");
+        require(package.to == address(this), "Farming: invalid receiver");
+        require(package.token == address(basicToken), "Farming: invalid asset token");
+        require(package.amount == _amount, "Farming: amount validated doesn't match the one provided in tx");
         _deposit(_amount, _to);
     }
 
