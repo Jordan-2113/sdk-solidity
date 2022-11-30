@@ -15,64 +15,46 @@ contract UFIBuyerBSCWithCheck is PureFiTokenBuyerBSC, PureFiContext{
 
      function version() public pure returns(uint32){
         // 000.000.000 - Major.minor.internal
-        return 2000002;
+        return 2000003;
     }
 
     function setVerifier(address _verifier) external onlyOwner{
-        pureFiVerifier = IPureFiVerifier(_verifier);
+        pureFiVerifier = _verifier;
     }
 
     /**
     * buys UFI tokens for the full amount of _value provided.
     * @param _to - address to send bought tokens to
-    * @param data - signed data package from the off-chain verifier
-    *    data[0] - verification session ID
-    *    data[1] - rule ID (if required)
-    *    data[2] - verification timestamp
-    *    data[3] - verified wallet - to be the same as msg.sender
-    * @param signature - Off-chain verifier signature
+    * @param _purefidata -  a signed data package from the PureFi Issuer
     */
     function buyForWithAML(address _to,
-                    uint256[] memory data, 
-                    bytes memory signature
-                    ) external payable compliesDefaultRule (DefaultRule.AML, msg.sender, data, signature) {
+                    bytes calldata _purefidata
+                    ) external payable withDefaultAddressVerification (DefaultRule.AML, msg.sender, _purefidata) {
         _buy(_to);
     }
 
     /**
     * buys UFI tokens for the full amount of _value provided.
     * @param _to - address to send bought tokens to
-    * @param data - signed data package from the off-chain verifier
-    *    data[0] - verification session ID
-    *    data[1] - rule ID (if required)
-    *    data[2] - verification timestamp
-    *    data[3] - verified wallet - to be the same as msg.sender
-    * @param signature - Off-chain verifier signature
+    * @param _purefidata -  a signed data package from the PureFi Issuer
     */
     function buyForWithKYC(address _to,
-                    uint256[] memory data, 
-                    bytes memory signature
-                    ) external payable compliesDefaultRule (DefaultRule.KYC, msg.sender, data, signature) {
+                    bytes calldata _purefidata
+                    ) external payable withDefaultAddressVerification (DefaultRule.KYC, msg.sender, _purefidata) {
         _buy(_to);
     }
 
     /**
     * buys UFI tokens for the full amount of _value provided.
     * @param _to - address to send bought tokens to
-    * @param data - signed data package from the off-chain verifier
-    *    data[0] - verification session ID
-    *    data[1] - rule ID (if required)
-    *    data[2] - verification timestamp
-    *    data[3] - verified wallet - to be the same as msg.sender
-    * @param signature - Off-chain verifier signature
+   @param _purefidata -  a signed data package from the PureFi Issuer
     */
     function buyForWithKYCAML(address _to,
-                    uint256[] memory data, 
-                    bytes memory signature
-                    ) external payable compliesDefaultRule (DefaultRule.KYCAML, msg.sender, data, signature) {
+                   bytes calldata _purefidata
+                    ) external payable withDefaultAddressVerification (DefaultRule.KYCAML, msg.sender, _purefidata) {
         _buy(_to);
     }
 
-    function _beforeBuy(address _from, address _to, uint256 _amountSent) internal virtual override rejectUnverified() {}
+    function _beforeBuy(address _from, address _to, uint256 _amountSent) internal virtual override rejectUnverified {}
 
 }

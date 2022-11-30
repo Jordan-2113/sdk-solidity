@@ -38,8 +38,9 @@ const config: HardhatUserConfig = {
     },
     mainnet : {
       url : Infura.Mainnet,
-      gas: 500000,
-      gasPrice: 100000000000,
+      gas: "auto",
+      gasPrice: "auto",
+      minGasPrice: 10000000000,
       accounts : { mnemonic : mnemonic }
     },
     ropsten : {

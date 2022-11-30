@@ -6,6 +6,7 @@ import "../../../openzeppelin-contracts-upgradeable-master/contracts/token/ERC20
 import "../../../openzeppelin-contracts-upgradeable-master/contracts/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import "./IERC20Full.sol";
 import "../../PureFiContext.sol";
+import {VerificationPackage} from "../../interfaces/IPureFiVerifier.sol";
 
 contract FilteredPool is ERC20Upgradeable, PureFiContext {
 
@@ -14,39 +15,40 @@ contract FilteredPool is ERC20Upgradeable, PureFiContext {
     IERC20Full public basicToken;
 
     uint256 public totalCap;
+    uint256 public expectedRuleID;
 
     event Deposit(address indexed writer, uint256 amount);
     event Withdraw(address indexed writer, uint256 amount);
 
-    function __Pool_init(address _basicToken, address _pureFiVerifier, string memory _description, string memory _symbol) internal initializer {
+    function __Pool_init(address _basicToken, address _pureFiVerifier, string memory _description, string memory _symbol, uint256 _ruleID) internal initializer {
         __ERC20_init(_description, _symbol);
         __PureFiContext_init_unchained(_pureFiVerifier);
-        __Pool_init_unchained(_basicToken);
+        __Pool_init_unchained(_basicToken, _ruleID);
     }
 
-    function __Pool_init_unchained(address _basicToken) internal initializer {
+    function __Pool_init_unchained(address _basicToken, uint256 _ruleID) internal initializer {
         basicToken = IERC20Full(_basicToken);
+        expectedRuleID = _ruleID;
     }
 
     /**
     * deposit ERC20 tokens function, assigns Liquidity tokens to provided address.
     * @param _amount - amount to deposit
     * @param _to - address to assign liquidity tokens to
-    * @param data - signed data package from the off-chain verifier
-    *    data[0] - verification session ID
-    *    data[1] - rule ID (if required)
-    *    data[2] - verification timestamp
-    *    data[3] - verified wallet - to be the same as msg.sender
-    * @param signature - Off-chain verifier signature
+    * @param _purefidata - purefi issuer data. Expecting type 2 data here. 
     */
     function depositTo(
         uint256 _amount,
         address _to,
-        uint256[] memory data, 
-        bytes memory signature
-    ) external virtual compliesDefaultRule(DefaultRule.KYCAML, msg.sender, data, signature) {
+        bytes calldata _purefidata
+    ) external virtual withPureFiContext(_purefidata) {
+        VerificationPackage memory package = getVerificationPackage();
+        require(package.rule == expectedRuleID, "Farming: ruleID mismatch");
+        require(package.from == msg.sender, "Farming: invalid sender");
+        require(package.to == address(this), "Farming: invalid receiver");
+        require(package.token == address(basicToken), "Farming: invalid asset token");
+        require(package.amount == _amount, "Farming: amount validated doesn't match the one provided in tx");
         _deposit(_amount, _to);
-       
     }
 
     /**
@@ -58,9 +60,7 @@ contract FilteredPool is ERC20Upgradeable, PureFiContext {
     function withdrawTo(
         uint256 _amount,
         address _to
-    ) external 
-    /** at this point we might require just on-chain KYC, so that the user is "known". no funds AML check required at this point */
-    requiresOnChainKYC(msg.sender) {
+    ) external  {
         _withdraw(_amount,_to);
     }
 
@@ -86,7 +86,7 @@ contract FilteredPool is ERC20Upgradeable, PureFiContext {
     }
 
     /** Reject unverified user transaction that result in pool token transfers */
-    function _beforeTokenTransfer(address from, address to, uint256 amount) internal virtual override rejectUnverified {}
+    function _beforeTokenTransfer(address from, address to, uint256 amount) internal virtual override {}
 
     function _beforeDeposit(uint256 amountTokenSent, address sender, address holder) internal virtual {}
     function _afterDeposit(uint256 amountTokenSent, uint256 amountLiquidityGot, address sender, address holder) internal virtual {}
