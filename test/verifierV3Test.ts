@@ -58,9 +58,9 @@ describe("VerifierV3", function () {
         await issuerRegistry.register(signerIdentity.address, proof);
         await verifier.setUint256(3, 300);
 
-        await verifier.setUint256(1, DEFAULT_AML_RULE);
-        await verifier.setUint256(2, DEFAULT_KYC_RULE);
-        await verifier.setUint256(3, DEFAULT_AML_KYC_RULE);
+        await verifier.setUint256(4, DEFAULT_AML_RULE);
+        await verifier.setUint256(5, DEFAULT_KYC_RULE);
+        await verifier.setUint256(6, DEFAULT_AML_KYC_RULE);
         
     });
 
