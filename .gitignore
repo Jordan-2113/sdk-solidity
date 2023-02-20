@@ -4,6 +4,10 @@ cache
 typechain-types
 network_keys
 package-lock.json
+build
+*.log
+migrations*
+openzeppelin*
 .DS_store
 
 chainlink/contracts/src/*

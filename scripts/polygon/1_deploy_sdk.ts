@@ -1,5 +1,6 @@
 import { ethers } from "hardhat";
 import hre from "hardhat";
+import { utils } from "ethers";
 
 
 // params for verifier
@@ -15,19 +16,20 @@ const PARAM_TYPE1_DEFAULT_AML_RULE = 4;
 const PARAM_TYPE1_DEFAULT_KYC_RULE = 5;
 const PARAM_TYPE1_DEFAULT_KYCAML_RULE = 6;
 
+const PROXY_ADMIN_ADDRESS = "0xFB46f35941571dD2fce8A5Ea24E0826720aE8dab";
+
 // issuer_registry params
 
 const VALID_ISSUER_ADDRESS = "0xee5FF7E46FB99BdAd874c6aDb4154aaE3C90E698";
-const PROOF = "";  // proof of valid issuer for issuer_registry
-
-const ADMIN = "";  // admin of issuer_registry
+const PROOF = utils.keccak256(utils.toUtf8Bytes("PureFi Issuer")); 
+const ADMIN = "0xcE14bda2d2BceC5247C97B65DBE6e6E570c4Bb6D";  // admin of issuer_registry
 
 
 // SUBSCRIPTION_SERVICE params
 
-const UFI_TOKEN = "";
+const UFI_TOKEN = "0x3c205C8B3e02421Da82064646788c82f7bd753B9";
 const TOKEN_BUYER = "";
-const PROFIT_COLLECTION_ADDRESS = "";
+const PROFIT_COLLECTION_ADDRESS = "0xcE14bda2d2BceC5247C97B65DBE6e6E570c4Bb6D";
 
 
 async function main(){
@@ -46,8 +48,7 @@ async function main(){
 
     // DEPLOY PROXY_ADMIN //
     // ------------------------------------------------------------------- //
-    const proxy_admin = await PPROXY_ADMIN.deploy();
-    await proxy_admin.deployed();
+    const proxy_admin = await ethers.getContractAt("PProxyAdmin", PROXY_ADMIN_ADDRESS);
     
     console.log("PROXY_ADMIN address : ", proxy_admin.address);
 
@@ -140,12 +141,19 @@ async function main(){
 
     // initialize sub_service 
     const sub_service = await ethers.getContractAt("PureFiSubscriptionService", sub_service_proxy.address);
-    await sub_service.initialize(
+    await(await sub_service.initialize(
         ADMIN,
         UFI_TOKEN,
         TOKEN_BUYER,
         PROFIT_COLLECTION_ADDRESS
-    );
+    )).wait();
+
+    let yearTS = 86400*365;
+    let USDdecimals = 1000000;//10^6
+    await sub_service.setTierData(1,yearTS,50*USDdecimals,20,1,5);
+    await sub_service.setTierData(2,yearTS,100*USDdecimals,20,1,15);
+    await sub_service.setTierData(3,yearTS,300*USDdecimals,20,1,45);
+  
 
     // pause profitDistribution functionality
 
