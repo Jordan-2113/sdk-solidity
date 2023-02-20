@@ -11,7 +11,8 @@ const Infura = {
   Ropsten: "https://ropsten.infura.io/v3/" + infuraApiKey,
   Rinkeby: "https://rinkeby.infura.io/v3/" + infuraApiKey,
   Kovan: "https://kovan.infura.io/v3/" + infuraApiKey,
-  BSC: "https://bsc-dataseed1.binance.org "
+  BSC: "https://bsc-dataseed1.binance.org ",
+  Polygon: "https://polygon-mainnet.infura.io/v3/"+ infuraApiKey
 };
 const config: HardhatUserConfig = {
   solidity: {
@@ -80,7 +81,7 @@ const config: HardhatUserConfig = {
       accounts: { mnemonic : mnemonic }
     },
     polygon_mainnet : {
-      url : "https://polygon-rpc.com",
+      url : Infura.Polygon,
       accounts : { mnemonic : mnemonic }
     }
 

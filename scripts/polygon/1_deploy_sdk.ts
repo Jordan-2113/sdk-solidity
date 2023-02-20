@@ -8,9 +8,9 @@ import { utils } from "ethers";
 const PARAM_DEFAULT_AML_GRACETIME_KEY = 3;
 const DEFAULT_GRACETIME_VALUE = 300;
 
-const DEFAULT_AML_RULE = "431050";
-const DEFAULT_KYC_RULE = "777";
-const DEFAULT_KYCAML_RULE = "731090";
+const DEFAULT_AML_RULE = 431050;
+const DEFAULT_KYC_RULE = 777;
+const DEFAULT_KYCAML_RULE = 731090;
 
 const PARAM_TYPE1_DEFAULT_AML_RULE = 4;
 const PARAM_TYPE1_DEFAULT_KYC_RULE = 5;
@@ -59,17 +59,18 @@ async function main(){
     await issuer_registry_mastercopy.deployed();
 
     console.log("ISSUER_REGISTRY_MASTERCOPY address : ", issuer_registry_mastercopy.address);
-
+    await new Promise(resolve => setTimeout(resolve, 3000)); // 3 sec
 
     const issuer_registry_proxy = await PPROXY.deploy(issuer_registry_mastercopy.address, proxy_admin.address, "0x");
     await issuer_registry_proxy.deployed();
 
     console.log("issuer_registry address : ", issuer_registry_proxy.address);
+    await new Promise(resolve => setTimeout(resolve, 3000)); // 3 sec
 
     // initialize issuer_registry
     const issuer_registry = await ethers.getContractAt("PureFiIssuerRegistry", issuer_registry_proxy.address);
 
-    await issuer_registry.initialize(ADMIN);
+    await (await issuer_registry.initialize(ADMIN)).wait();
 
     // set issuer
     await issuer_registry.register(VALID_ISSUER_ADDRESS, PROOF);
@@ -77,55 +78,60 @@ async function main(){
 
     // DEPLOY WHITELIST // 
     // ------------------------------------------------------------------- //
-
+    
     const whitelist_mastercopy = await WHITELIST.deploy();
     await whitelist_mastercopy.deployed();
 
     console.log("whitelist_mastercopy address : ", whitelist_mastercopy.address);
+    await new Promise(resolve => setTimeout(resolve, 3000)); // 3 sec
 
     const whitelist_proxy = await PPROXY.deploy(whitelist_mastercopy.address, proxy_admin.address, "0x");
     await whitelist_proxy.deployed();
 
     console.log("whitelist_proxy address : ", whitelist_proxy.address);
+    await new Promise(resolve => setTimeout(resolve, 3000)); // 3 sec
 
     const whitelist = await ethers.getContractAt("PureFiWhitelist", whitelist_proxy.address);
 
     // initialize whitelist
-    await whitelist.initialize(issuer_registry.address);
+    await(await whitelist.initialize(issuer_registry.address)).wait();
 
     // DEPLOY VERIFIER // 
     // ------------------------------------------------------------------- //
 
+    console.log("Deploying verifier...");
     const verifier_mastercopy = await VERIFIER.deploy();
     await verifier_mastercopy.deployed();
 
     console.log("verifier_mastercopy address : ", verifier_mastercopy.address);
+    await new Promise(resolve => setTimeout(resolve, 3000)); // 3 sec
 
     const verifier_proxy = await PPROXY.deploy(verifier_mastercopy.address, proxy_admin.address, "0x");
     await verifier_proxy.deployed();
 
     console.log("verifier_proxy address : ", verifier_proxy.address);
+    await new Promise(resolve => setTimeout(resolve, 3000)); // 3 sec
     
     // initialize verifier
     const verifier = await ethers.getContractAt("PureFiVerifier", verifier_proxy.address);
-    await verifier.initialize(issuer_registry.address, whitelist.address);
+    await(await verifier.initialize(issuer_registry.address, whitelist.address)).wait();
 
     // set verifier params
 
-    await verifier.setUint256(PARAM_DEFAULT_AML_GRACETIME_KEY, DEFAULT_GRACETIME_VALUE );
+    await(await verifier.setUint256(PARAM_DEFAULT_AML_GRACETIME_KEY, DEFAULT_GRACETIME_VALUE)).wait();
 
-    await verifier.setUint256(PARAM_TYPE1_DEFAULT_AML_RULE, DEFAULT_AML_RULE);
+    await(await verifier.setUint256(PARAM_TYPE1_DEFAULT_AML_RULE, DEFAULT_AML_RULE)).wait();
 
-    await verifier.setUint256(PARAM_TYPE1_DEFAULT_KYC_RULE, DEFAULT_KYC_RULE);
+    await(await verifier.setUint256(PARAM_TYPE1_DEFAULT_KYC_RULE, DEFAULT_KYC_RULE)).wait();
 
-    await verifier.setUint256(PARAM_TYPE1_DEFAULT_KYCAML_RULE, DEFAULT_KYCAML_RULE);
+    await(await verifier.setUint256(PARAM_TYPE1_DEFAULT_KYCAML_RULE, DEFAULT_KYCAML_RULE)).wait();
     
-    await verifier.setString(1, "PureFiVerifier: Issuer signature invalid");
-    await verifier.setString(2, "PureFiVerifier: Funds sender doesn't match verified wallet");
-    await verifier.setString(3, "PureFiVerifier: Verification data expired");
-    await verifier.setString(4, "PureFiVerifier: Rule verification failed");
-    await verifier.setString(5, "PureFiVerifier: Credentials time mismatch");
-    await verifier.setString(6, "PureFiVerifier: Data package invalid")
+    await(await verifier.setString(1, "PureFiVerifier: Issuer signature invalid")).wait();
+    await(await verifier.setString(2, "PureFiVerifier: Funds sender doesn't match verified wallet")).wait();
+    await(await verifier.setString(3, "PureFiVerifier: Verification data expired")).wait();
+    await(await verifier.setString(4, "PureFiVerifier: Rule verification failed")).wait();
+    await(await verifier.setString(5, "PureFiVerifier: Credentials time mismatch")).wait();
+    await(await verifier.setString(6, "PureFiVerifier: Data package invalid")).wait();
 
     // DEPLOY TOKEN_BUYER // 
     // ------------------------------------------------------------------- //
@@ -133,6 +139,7 @@ async function main(){
     const token_buyer = await TOKEN_BUYER.deploy();
     await token_buyer.deployed();
     console.log("Token_buyer address :", token_buyer.address);
+    await new Promise(resolve => setTimeout(resolve, 3000)); // 3 sec
 
     // DEPLOY SUBSCRIPTION_SERVICE // 
     // ------------------------------------------------------------------- //
@@ -140,11 +147,13 @@ async function main(){
     const sub_service_mastercopy = await SUBSCRIPTION_SERVICE.deploy();
     
     console.log("Subscription master copy : ", sub_service_mastercopy.address);
+    await new Promise(resolve => setTimeout(resolve, 3000)); // 3 sec
 
     const sub_service_proxy = await PPROXY.deploy(sub_service_mastercopy.address, proxy_admin.address, "0x");
-    await sub_service_proxy.deployed();
+    await sub_service_proxy.deployed();    
 
     console.log("Subscription service address : ", sub_service_proxy.address);
+    await new Promise(resolve => setTimeout(resolve, 3000)); // 3 sec
 
     // initialize sub_service 
     const sub_service = await ethers.getContractAt("PureFiSubscriptionService", sub_service_proxy.address);
@@ -157,9 +166,9 @@ async function main(){
 
     let yearTS = 86400*365;
     let USDdecimals = 1000000;//10^6
-    await sub_service.setTierData(1,yearTS,50*USDdecimals,20,1,5);
-    await sub_service.setTierData(2,yearTS,100*USDdecimals,20,1,15);
-    await sub_service.setTierData(3,yearTS,300*USDdecimals,20,1,45);
+    await(await sub_service.setTierData(1,yearTS,50*USDdecimals,20,1,5)).wait();
+    await(await sub_service.setTierData(2,yearTS,100*USDdecimals,20,1,15)).wait();
+    await(await sub_service.setTierData(3,yearTS,300*USDdecimals,20,1,45)).wait();
   
 
     // pause profitDistribution functionality
