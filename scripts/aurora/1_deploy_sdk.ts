@@ -1,4 +1,7 @@
 import { ethers, upgrades} from "hardhat";
+// import { keccak256 } from "@ethersproject/keccak256";
+// import { toUtf8Bytes } from "@ethersproject/strings";
+import { utils } from "ethers";
 import hre from "hardhat";
 
 
@@ -18,9 +21,9 @@ const PARAM_TYPE1_DEFAULT_KYCAML_RULE = 6;
 // issuer_registry params
 
 const VALID_ISSUER_ADDRESS = "0xee5FF7E46FB99BdAd874c6aDb4154aaE3C90E698";
-const PROOF = "";  // proof of valid issuer for issuer_registry
+const PROOF = utils.keccak256(utils.toUtf8Bytes("PureFi Issuer"));  // proof of valid issuer for issuer_registry
 
-const ADMIN = "";  // admin of issuer_registry
+const ADMIN = "0xcE14bda2d2BceC5247C97B65DBE6e6E570c4Bb6D";  // admin of issuer_registry
 
 
 

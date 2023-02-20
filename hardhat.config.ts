@@ -4,7 +4,7 @@ import { HardhatUserConfig } from "hardhat/types";
 import "@nomicfoundation/hardhat-chai-matchers";
 import "@openzeppelin/hardhat-upgrades";
 import "hardhat-contract-sizer";
-import { infuraApiKey, privateKey, mnemonic, etherscanApiKey, bscnode, privateKeyTest } from "./network_keys/secrets.json";
+import { infuraApiKey, privateKey, mnemonic, etherscanApiKey, bscnode } from "./network_keys/secrets.json";
 
 const Infura = {
   Mainnet: "https://mainnet.infura.io/v3/" + infuraApiKey,
@@ -69,11 +69,11 @@ const config: HardhatUserConfig = {
     },
     auroratest : {
       url : "https://testnet.aurora.dev",
-      accounts : [ privateKeyTest ]
+      accounts : { mnemonic : mnemonic }
     },
     auroramainnet : {
       url : "https://mainnet.aurora.dev",
-      accounts : [ privateKey ]
+      accounts : { mnemonic : mnemonic }
     }
 
   },
