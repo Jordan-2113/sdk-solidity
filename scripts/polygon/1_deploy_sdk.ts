@@ -45,6 +45,7 @@ async function main(){
     const ISSUER_REGISTRY = await ethers.getContractFactory("PureFiIssuerRegistry");
     const VERIFIER = await ethers.getContractFactory("PureFiVerifier");
     const SUBSCRIPTION_SERVICE = await ethers.getContractFactory("PureFiSubscriptionService");
+    const TOKEN_BUYER = await ethers.getContractFactory("PureFiTokenBuyerPolygon");
 
     // DEPLOY PROXY_ADMIN //
     // ------------------------------------------------------------------- //
@@ -126,6 +127,12 @@ async function main(){
     await verifier.setString(5, "PureFiVerifier: Credentials time mismatch");
     await verifier.setString(6, "PureFiVerifier: Data package invalid")
 
+    // DEPLOY TOKEN_BUYER // 
+    // ------------------------------------------------------------------- //
+
+    const token_buyer = await TOKEN_BUYER.deploy();
+    await token_buyer.deployed();
+    console.log("Token_buyer address :", token_buyer.address);
 
     // DEPLOY SUBSCRIPTION_SERVICE // 
     // ------------------------------------------------------------------- //
@@ -144,7 +151,7 @@ async function main(){
     await(await sub_service.initialize(
         ADMIN,
         UFI_TOKEN,
-        TOKEN_BUYER,
+        token_buyer.address,
         PROFIT_COLLECTION_ADDRESS
     )).wait();
 
