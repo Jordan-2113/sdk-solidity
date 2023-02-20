@@ -37,6 +37,9 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
     uint24 private profitDistributionInterval;//seconds
     address private profitDistributionAddress; // distributor contract address
 
+    //2000009
+    bool public isProfitDistributionPaused; // true - is paused; false - vice versa
+
     struct Tier{
         uint8 isactive; //1 - active, 0 - non acvite (can't subscribe)
         uint48 subscriptionDuration; //subscriptionDuration = token lockup time in seconds.
@@ -57,6 +60,11 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
     event Unsubscribed(address indexed subscriber, uint8 tier, uint64 dateUnsubscribed, uint256 ufiBurned);
     event ProfitDistributed(address indexed profitCollector, uint256 amount);
 
+    modifier profitDistributionIsActive(){
+        require( isProfitDistributionPaused == false, "PureFiSubscriptionService : ProfitDistribution is disabled" );
+        _;
+    }
+
     /**
     Changelog:
     1000001 -> 1000002
@@ -68,11 +76,13 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
     2. fix formula in _collectProfit(), _estimateProfit
     2000005->2000006
     1. Make contract keeper compatible
+    2000008 -> 2000009
+    1. Add flag for automation (Chainlink) functionality
         
     */
     function version() public pure returns(uint32){
         // 000.000.000 - Major.minor.internal
-        return 2000008;
+        return 2000009;
     }
 
     function initialize(address _admin, address _ufi, address _tokenBuyer, address _profitCollectionAddress) public initializer{
@@ -114,11 +124,21 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
         tiers[_tierID].isactive = _isActive;
     }
 
+    function pauseProfitDistribution() external onlyRole(DEFAULT_ADMIN_ROLE){
+        isProfitDistributionPaused = true;
+    }
+
+    function unpauseProfitDistribution() external onlyRole(DEFAULT_ADMIN_ROLE){
+        isProfitDistributionPaused = false;
+    }
+
+
+
     function distributeProfit() external {
         _distributeProfit();
     } 
 
-    function _distributeProfit() internal{
+    function _distributeProfit() internal profitDistributionIsActive{
         uint256 totalTokensToDistribute = _collectProfit();
         uint256 tokensToDistribute = totalTokensToDistribute * profitDistributionPart / P100;
         ufiToken.transfer(profitDistributionAddress, tokensToDistribute);

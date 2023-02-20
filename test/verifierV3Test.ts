@@ -64,7 +64,7 @@ describe("VerifierV3", function () {
         
     });
 
-    xit("test validatePureFiData", async function () {
+    it("test validatePureFiData", async function () {
         
         //purefipackage
         const packageType = 1;
@@ -98,7 +98,7 @@ describe("VerifierV3", function () {
         
     });
 
-    xit("test decodePureFiPackage type 2", async function (){
+    it("test decodePureFiPackage type 2", async function (){
         const type = 2;
         const sender = signerIdentity.address;
         const receiver = alice.address;
@@ -121,25 +121,26 @@ describe("VerifierV3", function () {
 
     });
 
-    xit("test decodePureFiPackage type 3", async function (){
+    it("test decodePureFiPackage type 3", async function (){
         const type = 3;
         const payload = defaultAbiCoder.encode(["uint256"], [456]);
+        const sender = signerIdentity.address;
         const packageToDecode = utils.defaultAbiCoder.encode(
-            ["uint8", "uint256", "uint256", "bytes"],
-            [type, ruleId, sessionId, payload]
+            ["uint8", "uint256", "uint256", "address", "bytes"],
+            [type, ruleId, sessionId, sender, payload]
         );
         const info = await verifier.decodePureFiPackage(packageToDecode);
         expect(info[0]).eq(3);
         expect(info[1]).eq(BigNumber.from(sessionId));
         expect(info[2]).eq(BigNumber.from(ruleId));
-        expect(info[3]).eq(NULL_ADDRESS);
+        expect(info[3]).eq(sender);
         expect(info[4]).eq(NULL_ADDRESS);
         expect(info[5]).eq(NULL_ADDRESS);
         expect(info[6]).eq(BigNumber.from(0));
         expect(info[7]).eq(payload);
     });
 
-    xit("test PureFiContext withPureFiContext modifier", async function () {
+    it("test PureFiContext withPureFiContext modifier", async function () {
         {
             const type = 1;
             const sender = signerIdentity.address;
@@ -180,10 +181,11 @@ describe("VerifierV3", function () {
         {
             const type = 3;
             const ruleId = 100;
+            const sender = signerIdentity.address;
             const payload = defaultAbiCoder.encode(["uint256"], [456]);
             const purefiPackage = defaultAbiCoder.encode(
-                ["uint8", "uint256", "uint256", "bytes" ],
-                [type, ruleId, sessionId, payload]
+                ["uint8", "uint256", "uint256", "address", "bytes" ],
+                [type, ruleId, sessionId, sender, payload]
                 );
             
             const message = solidityPack(["uint64", "bytes"], [currentTimestamp, purefiPackage]);

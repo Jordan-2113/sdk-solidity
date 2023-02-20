@@ -74,6 +74,14 @@ const config: HardhatUserConfig = {
     auroramainnet : {
       url : "https://mainnet.aurora.dev",
       accounts : { mnemonic : mnemonic }
+    },
+    polygon_mumbai: {
+      url: "https://rpc-mumbai.maticvigil.com",
+      accounts: { mnemonic : mnemonic }
+    },
+    polygon_mainnet : {
+      url : "https://polygon-rpc.com",
+      accounts : { mnemonic : mnemonic }
     }
 
   },

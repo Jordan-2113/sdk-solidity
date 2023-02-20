@@ -25,10 +25,12 @@ contract PureFiVerifier is OwnableUpgradeable, ParamStorage, SignLib, IPureFiVer
     /**
   Changelog:
   version 1001001:
+  version 3000001:
+    * Fix purefidata for tx_type=3, add sender field
    */
   function version() public pure returns(uint32){
     // 000.000.000 - Major.minor.internal
-    return 3000000;
+    return 3000001;
   }
 
   // IMPORTANT
@@ -41,7 +43,7 @@ contract PureFiVerifier is OwnableUpgradeable, ParamStorage, SignLib, IPureFiVer
   //      packagedata = bytes, dynamic, remaining data
   // if(purefipackagetype = 1) => packagedata = {uint256 ruleID, uint256 sessionId, address sender}
   // if(purefipackagetype = 2) => packagedata = {uint256 ruleID, uint256 sessionId, address sender, address receiver, address token, uint258 amount}
-  // if(purefipackagetype = 3) => packagedata = {uint256 ruleID, uint256 sessionId, bytes payload}
+  // if(purefipackagetype = 3) => packagedata = {uint256 ruleID, uint256 sessionId, address sender, bytes payload}
   // later on we'll add purefipackagetype = 4. with non-interactive mode data, and this will go into payload
 
   function validatePureFiData(bytes memory _purefidata) external override view returns (bytes memory, uint16){
@@ -100,12 +102,12 @@ contract PureFiVerifier is OwnableUpgradeable, ParamStorage, SignLib, IPureFiVer
         }); 
     }
     else if(packagetype == 3){
-      (, uint256 ruleID, uint256 sessionID, bytes memory payload_data) = abi.decode(_purefipackage, (uint8, uint256, uint256, bytes));
+      (, uint256 ruleID, uint256 sessionID, address sender, bytes memory payload_data) = abi.decode(_purefipackage, (uint8, uint256, uint256, address, bytes));
       package = VerificationPackage({
           packagetype : 3,
           rule : ruleID,
           session: sessionID,
-          from : address(0),
+          from : sender,
           to : address(0),
           token : address(0),
           amount : 0,
