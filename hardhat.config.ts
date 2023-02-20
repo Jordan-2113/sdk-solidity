@@ -74,6 +74,14 @@ const config: HardhatUserConfig = {
     auroramainnet : {
       url : "https://mainnet.aurora.dev",
       accounts : [ privateKey ]
+    },
+    polygon_mumbai: {
+      url: "https://rpc-mumbai.maticvigil.com",
+      accounts: [ privateKey ]
+    },
+    polygon_mainnet : {
+      url : "https://polygon-rpc.com",
+      accounts : [ privateKey ]
     }
 
   },
