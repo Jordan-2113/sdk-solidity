@@ -16,3 +16,8 @@ async function main(){
     await(await sub_service.setTierData(3,yearTS,BigNumber.from(300).mul(USDdecimals),20,1,45)).wait();
     
 }
+
+main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
