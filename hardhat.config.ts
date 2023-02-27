@@ -83,6 +83,18 @@ const config: HardhatUserConfig = {
     polygon_mainnet : {
       url : Infura.Polygon,
       accounts : { mnemonic : mnemonic }
+    },
+    bitgert_testnet: {
+      url: "https://testnet-rpc.brisescan.com",
+      chainId: 97,
+      gasPrice: 20000000000,
+      accounts: {mnemonic: mnemonic}
+    },
+    bitgert_mainnet: {
+      url: "https://nc-dataseed.brisescan.com/",
+      chainId: 56,
+      gasPrice: 20000000000,
+      accounts: {mnemonic: mnemonic}
     }
 
   },
