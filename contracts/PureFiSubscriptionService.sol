@@ -43,7 +43,8 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
 
     //2000010
     mapping (address => ContractSubscription) contractSubscriptions; // contractAddress => ContractSubscription
-    mapping (address => address) public customRequestSigners; // signerAddress => subscriptionOwner
+    mapping (address => address) customRequestSigners; // signerAddress => subscriptionOwner
+    mapping (address => UserSubscriptionExtras) userSubscriptionsExtras; //subscriptionOwner => UserSubscriptionExtras
 
     struct Tier{
         uint8 isactive; //1 - active, 0 - non acvite (can't subscribe)
@@ -59,6 +60,11 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
         uint64 dateSubscribed;
         uint128 tokensDeposited; //tokens tokensDeposited
         uint48 userdata;//storage reserve for future 
+    }
+
+    struct UserSubscriptionExtras{
+        address[] customSigners;
+        address[] customContracts;
     }
 
     struct ContractSubscription{
@@ -100,7 +106,7 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
     */
     function version() public pure returns(uint32){
         // 000.000.000 - Major.minor.internal
-        return 2000010;
+        return 2000011;
     }
 
     function initialize(address _admin, address _ufi, address _tokenBuyer, address _profitCollectionAddress) public initializer{
@@ -201,13 +207,14 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
     }
 
     function subsribeContract(address _contract, address _resolver) external {
-        require(isContract(_contract),"Invalid contract address");
-        require(_resolver == address(0) || isContract(_resolver),"Invalid contract address");
+        require(_isContract(_contract),"Invalid contract address");
+        require(_resolver == address(0) || _isContract(_resolver),"Invalid contract address");
         address _user = msg.sender;
         uint256 subscriptionExpireDate = userSubscriptions[_user].dateSubscribed + ((userSubscriptions[_user].tier > 0)?tiers[userSubscriptions[_user].tier].subscriptionDuration:0);
         require(subscriptionExpireDate > block.timestamp, "No active subscription found");
         require(contractSubscriptions[_contract].subscriptionOwner == _user || contractSubscriptions[_contract].subscriptionOwner == address(0), "Can't change subscription owner for submitted contract address");
         contractSubscriptions[_contract] = ContractSubscription(msg.sender, _resolver);
+        userSubscriptionsExtras[msg.sender].customContracts.push(_contract);
         emit ContractSubscribed(_contract, _user, _resolver);
     }
 
@@ -215,6 +222,7 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
         require (contractSubscriptions[_contract].subscriptionOwner == msg.sender || hasRole(DEFAULT_ADMIN_ROLE,msg.sender), "Invalid sender or contract not subscribed");
         address subscriptionOwnerBackup = contractSubscriptions[_contract].subscriptionOwner;
         delete contractSubscriptions[_contract];
+        _arrayRemove( userSubscriptionsExtras[msg.sender].customContracts, _contract);
         emit ContractUnsubscribed(_contract, subscriptionOwnerBackup);
     }
 
@@ -223,14 +231,16 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
         uint256 subscriptionExpireDate = userSubscriptions[_user].dateSubscribed + ((userSubscriptions[_user].tier > 0)?tiers[userSubscriptions[_user].tier].subscriptionDuration:0);
         require(subscriptionExpireDate > block.timestamp, "No active subscription found");
         require(customRequestSigners[_signer] == address(0), "Signer address already registered");
-        require(!isContract(_signer),"Cannot register contract address as signer. should be EOA");
+        require(!_isContract(_signer),"Cannot register contract address as signer. should be EOA");
         customRequestSigners[_signer] = _user;
+        userSubscriptionsExtras[msg.sender].customSigners.push(_signer);
         emit CustomSignerAdded(_user, _signer);
     }
 
     function removeCustomSigner(address _signer) external {
         require (customRequestSigners[_signer] == msg.sender || hasRole(DEFAULT_ADMIN_ROLE,msg.sender), "Invalid sender or signer is not registered");
         delete customRequestSigners[_signer];
+        _arrayRemove( userSubscriptionsExtras[msg.sender].customSigners, _signer);
         emit CustomSignerRemoved(msg.sender, _signer);
     }
 
@@ -300,6 +310,22 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
         
     }
 
+    function getUserExtras(address _user) external view returns(uint256, uint256){
+        return (userSubscriptionsExtras[_user].customContracts.length,
+                userSubscriptionsExtras[_user].customSigners.length
+                );
+    }
+
+    function getUserContract(address _user, uint256 _index) external view returns (address, address){
+        return (userSubscriptionsExtras[_user].customContracts[_index],
+                contractSubscriptions[userSubscriptionsExtras[_user].customContracts[_index]].requestResolver
+            );
+    }
+
+    function getUserSigner(address _user, uint256 _index) external view returns (address){
+        return userSubscriptionsExtras[_user].customSigners[_index];
+    }
+
     /**
     returns: 
         0: subscription Duration
@@ -317,11 +343,6 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
                 tiers[_tier].amlIncluded,
                 tiers[_tier].isactive
                 );
-    }
-
-    function getContractSubscriptionData(address _contract) external view returns(address, address){
-        return (contractSubscriptions[_contract].subscriptionOwner,
-                contractSubscriptions[_contract].requestResolver);
     }
 
     function getProfitDistributionData() external view returns (address, address, uint8, uint24){
@@ -343,7 +364,7 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
         return(usersAmount,sDepi,sTiDepi);
     }
 
-    function subscriptionOwner(uint8 _type, uint256 _ruleID, address _signer, address _from, address _to) external view returns (address, uint256){
+    function subscriptionOwner(uint8 _type, uint256 _ruleID, address _signer, address _from, address _to) external view returns (address, uint256, uint8){
         address subscriptionOwner;
         // request signed by a registered custom signer?
         if(customRequestSigners[_signer] != address(0)){
@@ -368,10 +389,10 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
         // get expiration date for subscription
         if(subscriptionOwner != address(0)){
             uint256 subscriptionExpireDate = userSubscriptions[subscriptionOwner].dateSubscribed + tiers[userSubscriptions[subscriptionOwner].tier].subscriptionDuration;
-            return (subscriptionOwner, subscriptionExpireDate);
+            return (subscriptionOwner, subscriptionExpireDate, userSubscriptions[subscriptionOwner].tier);
         }
         else {
-            return (address(0),0);
+            return (address(0),0,0);
         }
     }
 
@@ -525,7 +546,7 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
      *  - an address where a contract lived, but was destroyed
      * ====
      */
-    function isContract(address account) private view returns (bool) {
+    function _isContract(address account) private view returns (bool) {
         // This method relies on extcodesize, which returns 0 for contracts in
         // construction, since the code is only stored at the end of the
         // constructor execution.
@@ -535,6 +556,26 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
             size := extcodesize(account)
         }
         return size > 0;
+    }
+
+    function _arrayRemove(address[] storage _array, address _item) private {
+        uint index = _array.length + 1;
+        for(uint i=0;i<_array.length;i++){
+            if(_array[i] == _item) {
+                index = i;
+                break;
+            }
+        }
+
+        if(index == _array.length - 1){
+            //remove last item
+            _array.pop();
+        } else if (_array.length > 1 && index < _array.length - 1){
+            _array[index] = _array[_array.length - 1];
+            _array.pop();
+        } else {
+            require(false, "Something went wrong with removing from array");
+        }
     }
     
     // Keeper compatible functions
