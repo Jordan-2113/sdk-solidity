@@ -2,6 +2,8 @@ import { ethers } from "hardhat";
 import hre from "hardhat";
 import { BigNumber, utils } from "ethers";
 
+//**** PUREFI SDK DEPLOYMENT SCRIPT *******//
+//**** TESTNET ONLY                 *******//
 
 // params for verifier
 
@@ -21,8 +23,8 @@ const decimals = BigNumber.from(10).pow(18);
 
 // issuer_registry params
 
-const VALID_ISSUER_ADDRESS = "0xee5FF7E46FB99BdAd874c6aDb4154aaE3C90E698";
-const PROOF = utils.keccak256(utils.toUtf8Bytes("PureFi Issuer")); 
+const VALID_ISSUER_ADDRESS = "0x592157ab4c6FADc849fA23dFB5e2615459D1E4e5";
+const PROOF = utils.keccak256(utils.toUtf8Bytes("PureFi Stage Issuer")); 
 const ADMIN = "0xcE14bda2d2BceC5247C97B65DBE6e6E570c4Bb6D";  // admin of issuer_registry
 
 

@@ -7,6 +7,7 @@ import "../chainlink/contracts/src/v0.8/AutomationCompatible.sol";
 
 import "./tokenbuyer/ITokenBuyer.sol";
 import "./interfaces/IProfitDistributor.sol";
+import "./interfaces/IPureFiIssuerRequestResolver.sol";
 
 contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompatible {
 
@@ -40,6 +41,10 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
     //2000009
     bool public isProfitDistributionPaused; // true - is paused; false - vice versa
 
+    //2000010
+    mapping (address => ContractSubscription) contractSubscriptions; // contractAddress => ContractSubscription
+    mapping (address => address) public customRequestSigners; // signerAddress => subscriptionOwner
+
     struct Tier{
         uint8 isactive; //1 - active, 0 - non acvite (can't subscribe)
         uint48 subscriptionDuration; //subscriptionDuration = token lockup time in seconds.
@@ -56,9 +61,18 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
         uint48 userdata;//storage reserve for future 
     }
 
+    struct ContractSubscription{
+        address subscriptionOwner; //an owner addres for the contract instance subscribed.
+        address requestResolver; //an instance of PureFiIssuerRequestResolver that is used to resolve requests to this contract
+    }
+
     event Subscribed(address indexed subscriber, uint8 tier, uint64 dateSubscribed, uint256 UFILocked);
     event Unsubscribed(address indexed subscriber, uint8 tier, uint64 dateUnsubscribed, uint256 ufiBurned);
     event ProfitDistributed(address indexed profitCollector, uint256 amount);
+    event ContractSubscribed(address indexed contrct, address indexed subscriber, address resolver);
+    event ContractUnsubscribed(address indexed contrct, address indexed subscriber);
+    event CustomSignerAdded(address indexed subscriber, address signer);
+    event CustomSignerRemoved(address indexed subscriber, address signer);
 
     modifier profitDistributionIsActive(){
         require( isProfitDistributionPaused == false, "PureFiSubscriptionService : ProfitDistribution is disabled" );
@@ -78,11 +92,15 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
     1. Make contract keeper compatible
     2000008 -> 2000009
     1. Add flag for automation (Chainlink) functionality
+    2000009 -> 2000010
+    1. Added feature to allow using custom signers for subscriptions
+    2. Added feature to assign request to contracts for subscriptions
+    3. Added new subscriptions resolution path.
         
     */
     function version() public pure returns(uint32){
         // 000.000.000 - Major.minor.internal
-        return 2000009;
+        return 2000010;
     }
 
     function initialize(address _admin, address _ufi, address _tokenBuyer, address _profitCollectionAddress) public initializer{
@@ -182,6 +200,42 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
         emit Unsubscribed(msg.sender, userSubscriptionTier, uint64(block.timestamp), actualProfit);
     }
 
+    function subsribeContract(address _contract, address _resolver) external {
+        require(isContract(_contract),"Invalid contract address");
+        require(_resolver == address(0) || isContract(_resolver),"Invalid contract address");
+        address _user = msg.sender;
+        uint256 subscriptionExpireDate = userSubscriptions[_user].dateSubscribed + ((userSubscriptions[_user].tier > 0)?tiers[userSubscriptions[_user].tier].subscriptionDuration:0);
+        require(subscriptionExpireDate > block.timestamp, "No active subscription found");
+        require(contractSubscriptions[_contract].subscriptionOwner == _user || contractSubscriptions[_contract].subscriptionOwner == address(0), "Can't change subscription owner for submitted contract address");
+        contractSubscriptions[_contract] = ContractSubscription(msg.sender, _resolver);
+        emit ContractSubscribed(_contract, _user, _resolver);
+    }
+
+    function unsubsribeContract(address _contract) external {
+        require (contractSubscriptions[_contract].subscriptionOwner == msg.sender || hasRole(DEFAULT_ADMIN_ROLE,msg.sender), "Invalid sender or contract not subscribed");
+        address subscriptionOwnerBackup = contractSubscriptions[_contract].subscriptionOwner;
+        delete contractSubscriptions[_contract];
+        emit ContractUnsubscribed(_contract, subscriptionOwnerBackup);
+    }
+
+    function addCustomSigner(address _signer) external {
+        address _user = msg.sender;
+        uint256 subscriptionExpireDate = userSubscriptions[_user].dateSubscribed + ((userSubscriptions[_user].tier > 0)?tiers[userSubscriptions[_user].tier].subscriptionDuration:0);
+        require(subscriptionExpireDate > block.timestamp, "No active subscription found");
+        require(customRequestSigners[_signer] == address(0), "Signer address already registered");
+        require(!isContract(_signer),"Cannot register contract address as signer. should be EOA");
+        customRequestSigners[_signer] = _user;
+        emit CustomSignerAdded(_user, _signer);
+    }
+
+    function removeCustomSigner(address _signer) external {
+        require (customRequestSigners[_signer] == msg.sender || hasRole(DEFAULT_ADMIN_ROLE,msg.sender), "Invalid sender or signer is not registered");
+        delete customRequestSigners[_signer];
+        emit CustomSignerRemoved(msg.sender, _signer);
+    }
+
+    //*********************************** VEIWS *********************************** */
+
     /**
     returns:
     0: amount of UFI to be on a balance for subscription
@@ -265,6 +319,11 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
                 );
     }
 
+    function getContractSubscriptionData(address _contract) external view returns(address, address){
+        return (contractSubscriptions[_contract].subscriptionOwner,
+                contractSubscriptions[_contract].requestResolver);
+    }
+
     function getProfitDistributionData() external view returns (address, address, uint8, uint24){
         return (profitCollectionAddress, profitDistributionAddress, profitDistributionPart, profitDistributionInterval);
     }
@@ -283,6 +342,40 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
         uint256 sTiDepi =     (userstat)        & 0x00000000000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF; //128
         return(usersAmount,sDepi,sTiDepi);
     }
+
+    function subscriptionOwner(uint8 _type, uint256 _ruleID, address _signer, address _from, address _to) external view returns (address, uint256){
+        address subscriptionOwner;
+        // request signed by a registered custom signer?
+        if(customRequestSigners[_signer] != address(0)){
+            subscriptionOwner = customRequestSigners[_signer];
+        }
+        // request to registered contract?
+        else if(contractSubscriptions[_to].subscriptionOwner != address(0)){
+            if(contractSubscriptions[_to].requestResolver != address(0)){
+                IPureFiIssuerRequestResolver resolver = IPureFiIssuerRequestResolver(contractSubscriptions[_to].requestResolver);
+                if(resolver.resolveRequest(_type,_ruleID,_signer,_from,_to))
+                    subscriptionOwner = contractSubscriptions[_to].subscriptionOwner;
+            }
+            else {
+                 subscriptionOwner = contractSubscriptions[_to].subscriptionOwner;
+            }
+        }
+        // signer has a valid and active subscription? 
+        else if(userSubscriptions[_signer].tier > 0){
+            subscriptionOwner = _signer;
+        }
+
+        // get expiration date for subscription
+        if(subscriptionOwner != address(0)){
+            uint256 subscriptionExpireDate = userSubscriptions[subscriptionOwner].dateSubscribed + tiers[userSubscriptions[subscriptionOwner].tier].subscriptionDuration;
+            return (subscriptionOwner, subscriptionExpireDate);
+        }
+        else {
+            return (address(0),0);
+        }
+    }
+
+    //****************************** PRIVATE FUNCTIONS ****************************** */
 
     function addUser(uint256 dateSubscribed, uint256 tokensDeposited) private {
         //0x - 04 bytes //number of users
@@ -413,6 +506,35 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
         uint256 sTiDepi =     (userstat)        & 0x00000000000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF; //128
         uint256 dateToProfit = (block.timestamp * sDepi - sTiDepi) / YEAR;
         return dateToProfit - lastProfitToDate + unrealizedProfit;
+    }
+
+     /**
+     * @dev Returns true if `account` is a contract.
+     *
+     * [IMPORTANT]
+     * ====
+     * It is unsafe to assume that an address for which this function returns
+     * false is an externally-owned account (EOA) and not a contract.
+     *
+     * Among others, `isContract` will return false for the following
+     * types of addresses:
+     *
+     *  - an externally-owned account
+     *  - a contract in construction
+     *  - an address where a contract will be created
+     *  - an address where a contract lived, but was destroyed
+     * ====
+     */
+    function isContract(address account) private view returns (bool) {
+        // This method relies on extcodesize, which returns 0 for contracts in
+        // construction, since the code is only stored at the end of the
+        // constructor execution.
+
+        uint256 size;
+        assembly {
+            size := extcodesize(account)
+        }
+        return size > 0;
     }
     
     // Keeper compatible functions
