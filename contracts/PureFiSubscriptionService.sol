@@ -75,8 +75,8 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
     event Subscribed(address indexed subscriber, uint8 tier, uint64 dateSubscribed, uint256 UFILocked);
     event Unsubscribed(address indexed subscriber, uint8 tier, uint64 dateUnsubscribed, uint256 ufiBurned);
     event ProfitDistributed(address indexed profitCollector, uint256 amount);
-    event ContractSubscribed(address indexed contrct, address indexed subscriber, address resolver);
-    event ContractUnsubscribed(address indexed contrct, address indexed subscriber);
+    event ContractSubscribed(address indexed subscriber, address indexed contrct, address resolver);
+    event ContractUnsubscribed(address indexed subscriber, address indexed contrct);
     event CustomSignerAdded(address indexed subscriber, address signer);
     event CustomSignerRemoved(address indexed subscriber, address signer);
 
@@ -102,11 +102,14 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
     1. Added feature to allow using custom signers for subscriptions
     2. Added feature to assign request to contracts for subscriptions
     3. Added new subscriptions resolution path.
+    2000011 -> 2000012
+    1. fixed issue with doubling contract address in usersExtras array.
+    2. minor bug fixes
         
     */
     function version() public pure returns(uint32){
         // 000.000.000 - Major.minor.internal
-        return 2000011;
+        return 2000012;
     }
 
     function initialize(address _admin, address _ufi, address _tokenBuyer, address _profitCollectionAddress) public initializer{
@@ -209,21 +212,25 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
     function subsribeContract(address _contract, address _resolver) external {
         require(_isContract(_contract),"Invalid contract address");
         require(_resolver == address(0) || _isContract(_resolver),"Invalid contract address");
-        address _user = msg.sender;
-        uint256 subscriptionExpireDate = userSubscriptions[_user].dateSubscribed + ((userSubscriptions[_user].tier > 0)?tiers[userSubscriptions[_user].tier].subscriptionDuration:0);
+        address subscriptionOwner = msg.sender;
+        uint256 subscriptionExpireDate = userSubscriptions[subscriptionOwner].dateSubscribed + ((userSubscriptions[subscriptionOwner].tier > 0)?tiers[userSubscriptions[subscriptionOwner].tier].subscriptionDuration:0);
         require(subscriptionExpireDate > block.timestamp, "No active subscription found");
-        require(contractSubscriptions[_contract].subscriptionOwner == _user || contractSubscriptions[_contract].subscriptionOwner == address(0), "Can't change subscription owner for submitted contract address");
-        contractSubscriptions[_contract] = ContractSubscription(msg.sender, _resolver);
-        userSubscriptionsExtras[msg.sender].customContracts.push(_contract);
-        emit ContractSubscribed(_contract, _user, _resolver);
+        require(contractSubscriptions[_contract].subscriptionOwner == subscriptionOwner || contractSubscriptions[_contract].subscriptionOwner == address(0), "Can't change subscription owner for submitted contract address");
+        if(contractSubscriptions[_contract].subscriptionOwner == address(0)){
+            contractSubscriptions[_contract] = ContractSubscription(subscriptionOwner, _resolver);
+            userSubscriptionsExtras[subscriptionOwner].customContracts.push(_contract);
+        } else {
+            contractSubscriptions[_contract].requestResolver = _resolver;
+        }
+        emit ContractSubscribed(subscriptionOwner, _contract, _resolver);
     }
 
     function unsubsribeContract(address _contract) external {
         require (contractSubscriptions[_contract].subscriptionOwner == msg.sender || hasRole(DEFAULT_ADMIN_ROLE,msg.sender), "Invalid sender or contract not subscribed");
         address subscriptionOwnerBackup = contractSubscriptions[_contract].subscriptionOwner;
         delete contractSubscriptions[_contract];
-        _arrayRemove( userSubscriptionsExtras[msg.sender].customContracts, _contract);
-        emit ContractUnsubscribed(_contract, subscriptionOwnerBackup);
+        _arrayRemove(userSubscriptionsExtras[subscriptionOwnerBackup].customContracts, _contract);
+        emit ContractUnsubscribed(subscriptionOwnerBackup, _contract);
     }
 
     function addCustomSigner(address _signer) external {
@@ -239,9 +246,10 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
 
     function removeCustomSigner(address _signer) external {
         require (customRequestSigners[_signer] == msg.sender || hasRole(DEFAULT_ADMIN_ROLE,msg.sender), "Invalid sender or signer is not registered");
+        address subscriptionOwnerBackup = customRequestSigners[_signer];
         delete customRequestSigners[_signer];
-        _arrayRemove( userSubscriptionsExtras[msg.sender].customSigners, _signer);
-        emit CustomSignerRemoved(msg.sender, _signer);
+        _arrayRemove(userSubscriptionsExtras[subscriptionOwnerBackup].customSigners, _signer);
+        emit CustomSignerRemoved(subscriptionOwnerBackup, _signer);
     }
 
     //*********************************** VEIWS *********************************** */
