@@ -210,8 +210,8 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
     }
 
     function subsribeContract(address _contract, address _resolver) external {
-        require(_isContract(_contract),"Invalid contract address");
-        require(_resolver == address(0) || _isContract(_resolver),"Invalid contract address");
+        require(_isContract(_contract),"Specified contract address is not a smart contract");
+        require(_resolver == address(0) || _isContract(_resolver),"Specified resolver address is not a smart contract");
         address subscriptionOwner = msg.sender;
         uint256 subscriptionExpireDate = userSubscriptions[subscriptionOwner].dateSubscribed + ((userSubscriptions[subscriptionOwner].tier > 0)?tiers[userSubscriptions[subscriptionOwner].tier].subscriptionDuration:0);
         require(subscriptionExpireDate > block.timestamp, "No active subscription found");
