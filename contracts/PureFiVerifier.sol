@@ -118,7 +118,7 @@ contract PureFiVerifier is OwnableUpgradeable, ParamStorage, SignLib, IPureFiVer
     //check that a contract caller matches the data in the package
     require(
       (package.to == msg.sender) || ((package.packagetype == 2 || package.packagetype == 3)&&package.from == msg.sender),
-      "PureFi Verifier : Contract caller invalid"
+      "PureFi Verifier : Contract caller invalid" 
     );
 
     //store requestID to avoid replay
@@ -129,7 +129,7 @@ contract PureFiVerifier is OwnableUpgradeable, ParamStorage, SignLib, IPureFiVer
   }
 
   function _decodePureFiPackage(bytes memory _purefipackage) private pure returns (VerificationPackage memory package){
-    uint8 packagetype = uint8(_purefipackage[0]);
+    uint8 packagetype = uint8(_purefipackage[31]);
     if(packagetype == 1){
       (, uint256 ruleID, uint256 sessionID, address sender, address receiver) = abi.decode(_purefipackage, (uint8, uint256, uint256, address, address));
       package = VerificationPackage({
