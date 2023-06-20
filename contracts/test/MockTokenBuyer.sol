@@ -8,6 +8,6 @@ contract MockTokenBuyer {
         view
         returns (uint256, uint256)
     {
-        return (1, 10**18);
+        return (1, _amountBUSD);
     }
 }

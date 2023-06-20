@@ -12,7 +12,16 @@ interface IParamStorage{
 
 abstract contract PureFiContext is Initializable{
 
-    enum DefaultRule {NONE, KYC, AML, KYCAML} 
+    enum DefaultRule {
+        NONE,
+        KYC,
+        AML,
+        KYCAML,
+        COUNTRYKYC,
+        AGEKYC,
+        COUNTRYAGEKYC,
+        Type2KYCAML
+    }
 
     bytes internal constant _PUREFI_CONTEXT_DATA_NOT_SET = "";
     uint256 internal constant _PUREFI_CONTEXT_NOT_VERIFIED = 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffa;

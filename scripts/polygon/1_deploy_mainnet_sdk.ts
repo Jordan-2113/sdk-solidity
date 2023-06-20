@@ -11,10 +11,12 @@ const DEFAULT_GRACETIME_VALUE = 300;
 const DEFAULT_AML_RULE = 431050;
 const DEFAULT_KYC_RULE = 777;
 const DEFAULT_KYCAML_RULE = 731090;
+const DEFAULT_CLEANING_TOLERANCE = 3600;
 
 const PARAM_TYPE1_DEFAULT_AML_RULE = 4;
 const PARAM_TYPE1_DEFAULT_KYC_RULE = 5;
 const PARAM_TYPE1_DEFAULT_KYCAML_RULE = 6;
+const PARAM_CLEANING_TOLERANCE = 10;
 
 const PROXY_ADMIN_ADDRESS = "0xFB46f35941571dD2fce8A5Ea24E0826720aE8dab";
 const decimals = BigNumber.from(10).pow(18);
@@ -130,12 +132,10 @@ async function main(){
     // set verifier params
 
     await(await verifier.setUint256(PARAM_DEFAULT_AML_GRACETIME_KEY, DEFAULT_GRACETIME_VALUE)).wait();
-
     await(await verifier.setUint256(PARAM_TYPE1_DEFAULT_AML_RULE, DEFAULT_AML_RULE)).wait();
-
     await(await verifier.setUint256(PARAM_TYPE1_DEFAULT_KYC_RULE, DEFAULT_KYC_RULE)).wait();
-
     await(await verifier.setUint256(PARAM_TYPE1_DEFAULT_KYCAML_RULE, DEFAULT_KYCAML_RULE)).wait();
+    await(await verifier.setUint256(PARAM_CLEANING_TOLERANCE, DEFAULT_CLEANING_TOLERANCE)).wait();
     
     await(await verifier.setString(1, "PureFiVerifier: Issuer signature invalid")).wait();
     await(await verifier.setString(2, "PureFiVerifier: Funds sender doesn't match verified wallet")).wait();
@@ -180,6 +180,7 @@ async function main(){
     await(await sub_service.setTierData(1,yearTS,BigNumber.from(50).mul(USDdecimals),20,1,5)).wait();
     await(await sub_service.setTierData(2,yearTS,BigNumber.from(100).mul(USDdecimals),20,1,15)).wait();
     await(await sub_service.setTierData(3,yearTS,BigNumber.from(300).mul(USDdecimals),20,1,45)).wait();
+    await(await sub_service.setTierData(10,yearTS,BigNumber.from(10000).mul(USDdecimals),0,3000,10000)).wait();
   
 
     // pause profitDistribution functionality

@@ -4,6 +4,7 @@ import { HardhatUserConfig } from "hardhat/types";
 import "@nomicfoundation/hardhat-chai-matchers";
 import "@openzeppelin/hardhat-upgrades";
 import "hardhat-contract-sizer";
+import "hardhat-storage-layout";
 import { infuraApiKey, privateKey, mnemonic, etherscanApiKey, bscnode } from "./network_keys/secrets.json";
 
 const Infura = {
@@ -16,7 +17,7 @@ const Infura = {
 };
 const config: HardhatUserConfig = {
   solidity: {
-    version : "0.8.12",
+    version : "0.8.19",
     settings : {
       optimizer : {
         enabled : true,
