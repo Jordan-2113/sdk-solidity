@@ -107,10 +107,12 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
     2. minor bug fixes
     2000012 -> 2000013
     1. changed subscriptionOwner call to treat both sender and receiver in type2 messages
+    2000013 -> 2000014
+    1. fixed issue with unsubscribe() when user subscribed after latest profit distribution (resulted in tx.revert)
     */
     function version() public pure returns(uint32){
         // 000.000.000 - Major.minor.internal
-        return 2000013;
+        return 2000014;
     }
 
     function initialize(address _admin, address _ufi, address _tokenBuyer, address _profitCollectionAddress) public initializer{
@@ -194,7 +196,8 @@ contract PureFiSubscriptionService is AccessControlUpgradeable, AutomationCompat
 
         uint256 totalProfit =  userSubscriptions[msg.sender].tokensDeposited * tiers[userSubscriptionTier].burnRatePercent / P100;
         uint256 actualProfit = totalProfit * timeSubscribed  / tiers[userSubscriptionTier].subscriptionDuration; 
-        uint256 alreadyCollectedProfit = (lastProfitDistributedTimestamp > 0) ? (totalProfit * (lastProfitDistributedTimestamp - userSubscriptions[msg.sender].dateSubscribed) / YEAR) : 0;        
+        
+        uint256 alreadyCollectedProfit = (lastProfitDistributedTimestamp > userSubscriptions[msg.sender].dateSubscribed) ? (totalProfit * (lastProfitDistributedTimestamp - userSubscriptions[msg.sender].dateSubscribed) / YEAR) : 0;        
 
         if(actualProfit > alreadyCollectedProfit){
             unrealizedProfit += actualProfit - alreadyCollectedProfit;
